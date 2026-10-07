@@ -35,6 +35,12 @@ Notes from the design passes that shaped OrclWAMP (Oracooll Winget App Migration
 - **Internet check** before installing.
 - **Re-scan** button and right-click actions (open winget.run / the publisher's page, copy ID).
 
+## Round 4 – User requests
+- **Light / Dark / System theme** toggle in the header of every window. The choice is saved and System follows Windows live.
+- **Manual apps & downloads** window: download apps winget can't install one by one or all at once into `Downloads\OrclWAMP`. If there's no direct file, the official download page opens instead. You can set your own link and run downloaded installers.
+- **Only sure links**: no link is shown unless OrclWAMP is sure of it (checked official links, user links, web-app addresses). Publisher homepages from the registry are shown as "Publisher website" only.
+- **Find winget packages for manual apps**: an exact-name winget search turns many "manual" apps (Store and renamed installs) into automatic installs. You confirm every match.
+
 ## Rejected / deferred
 - Offline installers (downloading every installer onto the USB): many installers don't allow redistribution, it needs lots of space, and winget's `download` support is uneven. *Deferred.*
 - Migrating app settings and data: out of scope and risky.

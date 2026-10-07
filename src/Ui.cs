@@ -135,7 +135,7 @@ namespace OrclWAMP
             catch { return false; }
         }
 
-        /// <summary>The "OrclWAMP 1.1.001 – subtitle" header shown at the top-left of every window.</summary>
+        /// <summary>The "OrclWAMP 1.2.001 – subtitle" header shown at the top-left of every window.</summary>
         public static Control AppHeader(string subtitle)
         {
             var p = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = new Padding(0), Padding = new Padding(0) };
@@ -145,10 +145,10 @@ namespace OrclWAMP
                     Image = Logo, SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(S(40), S(40)),
                     Anchor = AnchorStyles.Left, Margin = new Padding(0, 0, S(6), 0)
                 });
-            p.Controls.Add(new Label { Text = Program.AppName, Tag = "accent", AutoSize = true, Font = HeaderFont, ForeColor = Theme.Accent, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(S(2), 0, 0, 0) });
-            p.Controls.Add(new Label { Text = Program.VersionText, Tag = "muted", AutoSize = true, Font = TitleFont, ForeColor = Theme.Muted, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(S(2), 0, S(14), S(3)) });
+            p.Controls.Add(new Label { Text = Program.AppName, UseMnemonic = false, Tag = "accent", AutoSize = true, Font = HeaderFont, ForeColor = Theme.Accent, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(S(2), 0, 0, 0) });
+            p.Controls.Add(new Label { Text = Program.VersionText, UseMnemonic = false, Tag = "muted", AutoSize = true, Font = TitleFont, ForeColor = Theme.Muted, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(S(2), 0, S(14), S(3)) });
             if (!string.IsNullOrEmpty(subtitle))
-                p.Controls.Add(new Label { Text = subtitle, AutoSize = true, Font = TitleFont, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(0, 0, 0, S(3)) });
+                p.Controls.Add(new Label { Text = subtitle, UseMnemonic = false, AutoSize = true, Font = TitleFont, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(0, 0, 0, S(3)) });
             return p;
         }
 

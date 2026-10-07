@@ -26,8 +26,18 @@ namespace OrclWAMP
         public bool Selected;
         public string Note = "";
         public bool ManuallyAdded;
+        // Only for apps without a winget package:
+        public string Publisher = "";
+        public string Homepage = "";     // from the uninstall registry entry / web-app address
+        public string DownloadUrl = "";  // set by the user (or a known official link)
 
         public bool IsInstallable => Category == AppCategory.Winget || Category == AppCategory.Store;
+
+        public ManualApp ToManual() => new ManualApp
+        {
+            Name = Name, Version = Version, Id = Id, Publisher = Publisher, Homepage = Homepage, DownloadUrl = DownloadUrl,
+            Note = Note.StartsWith("Not in winget") ? "" : Note
+        };
     }
 
     [DataContract]
@@ -46,6 +56,12 @@ namespace OrclWAMP
         [DataMember(Order = 1)] public string Name = "";
         [DataMember(Order = 2)] public string Version = "";
         [DataMember(Order = 3)] public string Id = "";
+        [DataMember(Order = 4)] public string Publisher = "";
+        [DataMember(Order = 5)] public string Homepage = "";
+        [DataMember(Order = 6)] public string DownloadUrl = "";
+        [DataMember(Order = 7)] public string Note = "";
+
+        [OnDeserializing] void OnDeserializing(StreamingContext c) { Name = Version = Id = Publisher = Homepage = DownloadUrl = Note = ""; }
     }
 
     /// <summary>The migration package / profile file (OrclWAMP-packages.json).</summary>
@@ -99,7 +115,11 @@ namespace OrclWAMP
             var bad = m.Packages.Where(p => !SafeToken.IsMatch(p.Id) || !SafeToken.IsMatch(p.Source)).Select(p => p.Id).ToList();
             if (bad.Count > 0) throw new InvalidDataException("The file contains invalid package IDs: " + string.Join(", ", bad.Take(5)));
             m.ManualApps.RemoveAll(a => a == null || string.IsNullOrWhiteSpace(a.Name));
-            foreach (var a in m.ManualApps) { a.Version = a.Version ?? ""; a.Id = a.Id ?? ""; }
+            foreach (var a in m.ManualApps)
+            {
+                a.Version = a.Version ?? ""; a.Id = a.Id ?? ""; a.Publisher = a.Publisher ?? "";
+                a.Homepage = a.Homepage ?? ""; a.DownloadUrl = a.DownloadUrl ?? ""; a.Note = a.Note ?? "";
+            }
             return m;
         }
 

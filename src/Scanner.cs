@@ -42,7 +42,7 @@ namespace OrclWAMP
 
         static readonly Regex LocaleSuffix = new Regex(@"\s+-\s+[a-z]{2,3}-[a-z]{2,4}$", RegexOptions.IgnoreCase);
         // Installed website (PWA) packages look like MSIX\host.name-1A2B3C4D_1.0.0.0_neutral__xxxx
-        static readonly Regex WebApp = new Regex(@"^MSIX\\[^_\\]+-[0-9A-F]{8}_", RegexOptions.IgnoreCase);
+        static readonly Regex WebApp = new Regex(@"^MSIX\\([^_\\]+)-[0-9A-F]{8}_", RegexOptions.IgnoreCase);
 
         public static async Task<List<AppEntry>> ScanAsync(Action<string> status, CancellationToken ct)
         {
@@ -59,7 +59,8 @@ namespace OrclWAMP
             ct.ThrowIfCancellationRequested();
 
             status?.Invoke("Classifying apps…");
-            return Build(rows, exported);
+            var info = await Task.Run(() => ReadUninstallInfo());
+            return Build(rows, exported, info);
         }
 
         /// <summary>Id -> source name from "winget export" (gives exact, untruncated IDs).</summary>
@@ -80,7 +81,52 @@ namespace OrclWAMP
             return map;
         }
 
-        internal static List<AppEntry> Build(List<TableParser.Row> rows, Dictionary<string, PackageRef> exported)
+        internal sealed class UninstallInfo { public string Publisher = "", Homepage = ""; }
+
+        /// <summary>Normalised display name -> publisher / homepage from the Windows "Apps & features" registry entries.</summary>
+        static Dictionary<string, UninstallInfo> ReadUninstallInfo()
+        {
+            var map = new Dictionary<string, UninstallInfo>();
+            const string path = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+            foreach (var hive in new[] { Microsoft.Win32.RegistryHive.LocalMachine, Microsoft.Win32.RegistryHive.CurrentUser })
+            foreach (var view in new[] { Microsoft.Win32.RegistryView.Registry64, Microsoft.Win32.RegistryView.Registry32 })
+            {
+                try
+                {
+                    using (var root = Microsoft.Win32.RegistryKey.OpenBaseKey(hive, view))
+                    using (var key = root.OpenSubKey(path))
+                    {
+                        if (key == null) continue;
+                        foreach (var sub in key.GetSubKeyNames())
+                        {
+                            try
+                            {
+                                using (var k = key.OpenSubKey(sub))
+                                {
+                                    var name = k?.GetValue("DisplayName") as string;
+                                    if (string.IsNullOrWhiteSpace(name)) continue;
+                                    var norm = Norm(name);
+                                    if (map.ContainsKey(norm)) continue;
+                                    var url = new[] { "URLUpdateInfo", "URLInfoAbout", "HelpLink" }
+                                        .Select(v => (k.GetValue(v) as string ?? "").Trim())
+                                        .FirstOrDefault(Downloads.IsWebUrl) ?? "";
+                                    map[norm] = new UninstallInfo { Publisher = (k.GetValue("Publisher") as string ?? "").Trim(), Homepage = url };
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                catch { }
+            }
+            return map;
+        }
+
+        /// <summary>Lower-case letters and digits only ("xplorer² Pro 64-bit" == "xplorer2 pro 64bit").</summary>
+        public static string Norm(string s) =>
+            new string((s ?? "").Replace("²", "2").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+
+        internal static List<AppEntry> Build(List<TableParser.Row> rows, Dictionary<string, PackageRef> exported, Dictionary<string, UninstallInfo> info = null)
         {
             var result = new List<AppEntry>();
             var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -129,6 +175,13 @@ namespace OrclWAMP
                     e.Selected = e.Category == AppCategory.NotAvailable;
                     if (e.Category == AppCategory.System) e.Note = "Windows / driver component";
                     else if (WebApp.IsMatch(id)) e.Note = "Web app – reinstall it from the browser";
+                    if (e.Category == AppCategory.NotAvailable)
+                    {
+                        var webAddress = WebAppAddress(id);
+                        if (webAddress != null) e.Homepage = webAddress;
+                        else if (!id.StartsWith(@"MSIX\", StringComparison.OrdinalIgnoreCase) && info != null && info.TryGetValue(Norm(r.Name), out var ui))
+                        { e.Publisher = ui.Publisher; e.Homepage = ui.Homepage; }
+                    }
                     else if (e.Name.IndexOf("Driver", StringComparison.OrdinalIgnoreCase) >= 0) e.Note = "Driver – get it from the hardware maker";
                     else e.Note = "Not in winget – goes to the manual-install list";
                 }
@@ -152,6 +205,19 @@ namespace OrclWAMP
             return result;
         }
 
+        /// <summary>
+        /// The https address of an installed web app (PWA), derived from its package name
+        /// (MSIX\host.name-1A2B3C4D_...). Null for anything else, and for IP addresses / local names
+        /// where the scheme (http or https) isn't known.
+        /// </summary>
+        public static string WebAppAddress(string id)
+        {
+            var web = WebApp.Match(id ?? "");
+            if (!web.Success) return null;
+            var host = web.Groups[1].Value;
+            return Regex.IsMatch(host, @"^(?!\d+(\.\d+){3}$)[a-z0-9-]+(\.[a-z0-9-]+)+$", RegexOptions.IgnoreCase) ? "https://" + host : null;
+        }
+
         public static bool IsRuntime(string id) => RuntimePrefixes.Any(p => id.StartsWith(p, StringComparison.OrdinalIgnoreCase));
         public static bool IsPreinstalled(string id) => PreinstalledIds.Any(p => id.Equals(p, StringComparison.OrdinalIgnoreCase));
 
@@ -172,6 +238,39 @@ namespace OrclWAMP
         {
             s = (s ?? "").Trim();
             return s.Length <= max ? s : "…" + s.Substring(s.Length - max);
+        }
+
+        internal sealed class WingetMatch
+        {
+            public AppEntry Entry;
+            public TableParser.Row Row;
+            public bool Unique; // the only package whose name equals the app's name
+        }
+
+        /// <summary>
+        /// Looks up apps winget didn't link to a package (e.g. Store or renamed installs) by exact name.
+        /// Only identical names are returned; the user confirms every match.
+        /// </summary>
+        public static async Task<List<WingetMatch>> FindWingetMatchesAsync(IList<AppEntry> apps, Action<int, int, string> progress, CancellationToken ct)
+        {
+            var result = new List<WingetMatch>();
+            for (int i = 0; i < apps.Count; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var e = apps[i];
+                progress?.Invoke(i + 1, apps.Count, e.Name);
+                var q = Downloads.CleanName(e.Name);
+                if (q.Length < 2) continue;
+                var r = await Winget.RunAsync("search --name " + Winget.Quote(q) + " --accept-source-agreements" + Winget.NoInteract, null, ct, TimeSpan.FromMinutes(2));
+                var nq = Norm(q);
+                var exact = TableParser.Parse(r.Output)
+                    .Where(x => !x.Id.EndsWith("…") && Norm(x.Name) == nq)
+                    .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+                    .ToList();
+                foreach (var x in exact) result.Add(new WingetMatch { Entry = e, Row = x, Unique = exact.Count == 1 });
+            }
+            ct.ThrowIfCancellationRequested();
+            return result;
         }
 
         /// <summary>Set of installed package IDs (used by restore mode to skip what is already there).</summary>

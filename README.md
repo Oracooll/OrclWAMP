@@ -2,7 +2,7 @@
 
 # OrclWAMP – Oracooll Winget App Migration Tool
 
-**Version 1.1.001**
+**Version 1.2.001**
 
 Moving to a new PC? OrclWAMP scans your old PC, finds every app that **winget** can install, and writes a migration folder to a USB stick. On the new PC you double-click one file and your apps install themselves.
 
@@ -31,9 +31,14 @@ Get **OrclWAMP.exe** from the [latest release](https://github.com/Oracooll/OrclW
 1. Connect to the internet.
 2. Open the `OrclWAMP-Migration` folder on the USB stick and double-click **Install.cmd** (or `OrclWAMP.exe`).
 3. Check the list and click **Start installation**.
-4. Open the **Manual-install list** for anything winget couldn't handle.
+4. Click **Manual apps & downloads** for anything winget couldn't handle. Download the installers one by one or all at once.
 
-![Restore mode](docs/restore.png)
+![Restore mode (dark theme)](docs/restore.png)
+
+### Apps winget can't install
+**Manual apps & downloads** lists them with a download link **only where OrclWAMP is sure of it**. Download them one by one (double-click) or all at once into `Downloads\OrclWAMP`. Apps without a sure link say "No link". Right-click one to set your own link or search the web.
+
+![Manual apps & downloads](docs/manual-apps.png)
 
 ## Features
 
@@ -45,7 +50,11 @@ Get **OrclWAMP.exe** from the [latest release](https://github.com/Oracooll/OrclW
 | Add from winget | Search the winget catalog inside the app and add any package |
 | Profiles | Save or load app lists (`.json`). Standard `winget export` files can be opened too |
 | CSV export | Full inventory of the old PC |
-| Manual-install report | HTML checklist with a web-search link for every app winget can't install |
+| Find winget packages for manual apps | Searches winget by exact name for apps it couldn't link (e.g. Store versions). You confirm each match; ambiguous names stay unticked |
+| Manual apps & downloads | A window listing every app winget can't install. Download them one by one (double-click) or all at once into `Downloads\OrclWAMP`, open official download pages, set your own link, run the downloaded installers |
+| Only sure links | A download link is shown **only** when OrclWAMP is sure of it: a checked official link, a link you entered, or a web app's own address. Everything else says "No link" |
+| Manual-install checklist | Printable HTML checklist of the manual apps, with the same sure-only links |
+| Themes | Light / Dark / System toggle in every window. System follows Windows live |
 | winget check and repair | On the new PC, re-registers App Installer or downloads it from Microsoft if winget is missing |
 | Skips installed apps | Apps already on the new PC are detected and skipped |
 | Robust installs | Silent installs, per-app timeout, keeps going after errors, retries automatically when another install is in progress, **Retry failed**, readable error messages |

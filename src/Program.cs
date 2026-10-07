@@ -11,9 +11,9 @@ using System.Windows.Forms;
 [assembly: AssemblyCompany("Oracooll")]
 [assembly: AssemblyProduct("OrclWAMP - Oracooll Winget App Migration Tool")]
 [assembly: AssemblyCopyright("Copyright © Oracooll 2026 - MIT License")]
-[assembly: AssemblyVersion("1.1.1.0")]
-[assembly: AssemblyFileVersion("1.1.1.0")]
-[assembly: AssemblyInformationalVersion("1.1.001")]
+[assembly: AssemblyVersion("1.2.1.0")]
+[assembly: AssemblyFileVersion("1.2.1.0")]
+[assembly: AssemblyInformationalVersion("1.2.001")]
 [assembly: ComVisible(false)]
 
 namespace OrclWAMP
@@ -68,7 +68,7 @@ namespace OrclWAMP
         public const string RepoUrl = "https://github.com/Oracooll/OrclWAMP";
 
         public static string AppDir => Path.GetDirectoryName(Application.ExecutablePath);
-        public const string VersionText = "1.1.001";
+        public const string VersionText = "1.2.001";
 
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
 

@@ -113,7 +113,6 @@ namespace OrclWAMP
         public static string Report(Manifest m)
         {
             string H(string s) => WebUtility.HtmlEncode(s ?? "");
-            string Search(string s) => "https://www.bing.com/search?q=" + Uri.EscapeDataString(s + " download");
             var sb = new StringBuilder();
             sb.Append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
             sb.Append("<title>OrclWAMP – Manual install list</title><style>");
@@ -127,11 +126,20 @@ namespace OrclWAMP
             if (m.ManualApps.Count == 0) sb.Append("<p><b>Nothing to do – every selected app can be installed by winget.</b></p>");
             else
             {
-                sb.Append("<table><tr><th></th><th>App</th><th>Version on old PC</th><th></th></tr>");
+                sb.Append("<table><tr><th></th><th>App</th><th>Version on old PC</th><th>Download</th><th>Notes</th></tr>");
                 foreach (var a in m.ManualApps.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase))
-                    sb.Append("<tr><td><input type=\"checkbox\"></td><td>").Append(H(a.Name)).Append("</td><td class=\"v\">").Append(H(a.Version))
-                      .Append("</td><td><a href=\"").Append(H(Search(a.Name))).Append("\" target=\"_blank\" rel=\"noopener\">Search the web</a></td></tr>");
+                {
+                    // Only links OrclWAMP is sure about; otherwise no link is shown.
+                    var kind = Downloads.Resolve(a, out var url, out var note);
+                    sb.Append("<tr><td><input type=\"checkbox\"></td><td>").Append(H(a.Name));
+                    if (a.Publisher.Length > 0) sb.Append("<br><span class=\"muted\">").Append(H(a.Publisher)).Append("</span>");
+                    sb.Append("</td><td class=\"v\">").Append(H(a.Version)).Append("</td><td>");
+                    if (kind == LinkKind.None) sb.Append("<span class=\"muted\">no known link</span>");
+                    else sb.Append("<a href=\"").Append(H(url)).Append("\" target=\"_blank\" rel=\"noopener\">").Append(H(Downloads.KindText(kind))).Append("</a>");
+                    sb.Append("</td><td class=\"muted\">").Append(H(note)).Append("</td></tr>");
+                }
                 sb.Append("</table>");
+                sb.Append("<p class=\"muted\">Tip: OrclWAMP.exe (button \"Manual apps &amp; downloads\") can download these one by one or all at once.</p>");
             }
             sb.Append("<h2>Installed automatically by OrclWAMP (").Append(m.Packages.Count).Append(")</h2><table><tr><th>App</th><th>Package ID</th><th>Source</th></tr>");
             foreach (var p in m.Packages.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase))
@@ -152,7 +160,7 @@ namespace OrclWAMP
 "  2. Copy this folder to the new PC (or run it straight from the USB stick).\r\n" +
 "  3. Double-click Install.cmd (or OrclWAMP.exe).\r\n" +
 "  4. Check the list and click \"Start installation\".\r\n" +
-"  5. Open " + ReportName + " for the apps that need a manual install.\r\n\r\n" +
+"  5. Click \"Manual apps & downloads\" (or open " + ReportName + ") for the apps that need a manual install.\r\n\r\n" +
 "If Windows SmartScreen warns about the exe: click \"More info\" > \"Run anyway\".\r\n\r\n" +
 "FILES\r\n" +
 "  OrclWAMP.exe              the installer (the same portable tool that made this folder)\r\n" +
@@ -161,7 +169,7 @@ namespace OrclWAMP
 "  winget-packages.json      standard winget file:\r\n" +
 "                            winget import -i winget-packages.json --accept-package-agreements --accept-source-agreements --ignore-unavailable\r\n" +
 "  Install-Fallback.ps1      plain PowerShell fallback:  powershell -ExecutionPolicy Bypass -File Install-Fallback.ps1\r\n" +
-"  " + ReportName + "  apps winget can't install, with search links\r\n\r\n" +
+"  " + ReportName + "  apps winget can't install (download links only where certain)\r\n\r\n" +
 "COMMAND LINE\r\n" +
 "  OrclWAMP.exe /restore [file]   open restore mode\r\n" +
 "  OrclWAMP.exe /unattended       install everything without asking (use with /restore)\r\n\r\n" +

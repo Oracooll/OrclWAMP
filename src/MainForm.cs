@@ -25,7 +25,7 @@ namespace OrclWAMP
         readonly ToolStripStatusLabel _counts = new ToolStripStatusLabel();
         readonly ToolStripProgressBar _progress = new ToolStripProgressBar { Style = ProgressBarStyle.Marquee, Visible = false };
         readonly System.Windows.Forms.Timer _filterTimer = new System.Windows.Forms.Timer { Interval = 250 };
-        Button _scanBtn, _addBtn, _createBtn, _cancelBtn;
+        Button _scanBtn, _addBtn, _createBtn, _cancelBtn, _findBtn, _manualBtn;
         CancellationTokenSource _cts;
         int _sortCol;
         bool _sortAsc = true, _populating, _busy, _writing;
@@ -81,15 +81,9 @@ namespace OrclWAMP
             opts.Controls.Add(_createBtn);
             Controls.Add(opts);
 
-            // ---- top toolbar ----
+            // ---- filter row (second toolbar row) ----
             var top = Ui.Flow(DockStyle.Top);
-            _scanBtn = Ui.Button("Scan this PC", async (s, e) => await ScanAsync(), true);
-            _cancelBtn = Ui.Button("Cancel", (s, e) => _cts?.Cancel());
-            _cancelBtn.Visible = false;
-            _addBtn = Ui.Button("Add apps from winget…", (s, e) => AddFromWinget());
-            top.Controls.Add(_scanBtn);
-            top.Controls.Add(_cancelBtn);
-            top.Controls.Add(_addBtn);
+            top.Padding = new Padding(Ui.S(4), 0, Ui.S(4), Ui.S(4));
             top.Controls.Add(Ui.Label("Search:"));
             _filter.Width = Ui.S(160); _filter.Anchor = AnchorStyles.Left;
             _filter.TextChanged += (s, e) => { _filterTimer.Stop(); _filterTimer.Start(); };
@@ -106,6 +100,23 @@ namespace OrclWAMP
             top.Controls.Add(Ui.Button("None", (s, e) => SetVisibleChecked(_ => false)));
             top.Controls.Add(Ui.Button("Invert", (s, e) => SetVisibleChecked(a => !a.Selected)));
             Controls.Add(top);
+
+            // ---- action row ----
+            var actions = Ui.Flow(DockStyle.Top);
+            _scanBtn = Ui.Button("Scan this PC", async (s, e) => await ScanAsync(), true);
+            _cancelBtn = Ui.Button("Cancel", (s, e) => _cts?.Cancel());
+            _cancelBtn.Visible = false;
+            _addBtn = Ui.Button("Add apps from winget…", (s, e) => AddFromWinget());
+            _findBtn = Ui.Button("Find winget packages for manual apps…", async (s, e) => await FindMatchesAsync());
+            _manualBtn = Ui.Button("Manual apps && downloads…", (s, e) => OpenManualApps());
+            tips.SetToolTip(_findBtn, "Searches winget by name for the apps it couldn't link to a package\r\n(e.g. Store versions). You confirm every match.");
+            tips.SetToolTip(_manualBtn, "Download links for apps winget can't install – download them one by one or all at once.");
+            actions.Controls.Add(_scanBtn);
+            actions.Controls.Add(_cancelBtn);
+            actions.Controls.Add(_addBtn);
+            actions.Controls.Add(_findBtn);
+            actions.Controls.Add(_manualBtn);
+            Controls.Add(actions);
 
             var header = Ui.HeaderBar("Winget App Migration Tool");
             header.Padding = new Padding(Ui.S(8), Ui.S(6), Ui.S(8), 0);
@@ -147,6 +158,8 @@ namespace OrclWAMP
 
             var tools = new ToolStripMenuItem("&Tools");
             tools.DropDownItems.Add(new ToolStripMenuItem("&Add apps from winget…", null, (s, e) => AddFromWinget(), Keys.Control | Keys.N));
+            tools.DropDownItems.Add(new ToolStripMenuItem("&Find winget packages for manual apps…", null, async (s, e) => await FindMatchesAsync()));
+            tools.DropDownItems.Add(new ToolStripMenuItem("&Manual apps && downloads…", null, (s, e) => OpenManualApps(), Keys.Control | Keys.D));
             tools.DropDownItems.Add(new ToolStripMenuItem("&Install from a migration package (restore mode)…", null, (s, e) => OpenRestore()));
             tools.DropDownItems.Add(new ToolStripSeparator());
             tools.DropDownItems.Add(new ToolStripMenuItem("Check &winget", null, async (s, e) => { if (!_busy) await CheckWingetAsync(true); }));
@@ -238,7 +251,8 @@ namespace OrclWAMP
                 _all.AddRange(keep);
                 Populate();
                 int w = _all.Count(a => a.IsInstallable), m = _all.Count(a => a.Category == AppCategory.NotAvailable);
-                SetStatus($"Scan complete: {w} apps can be installed with winget, {m} need a manual install.");
+                SetStatus($"Scan complete: {w} apps can be installed with winget, {m} need a manual install." +
+                          (m > 0 ? "  Tip: \"Find winget packages for manual apps\" often finds more." : ""));
             }
             catch (OperationCanceledException) { SetStatus("Scan cancelled."); }
             catch (Exception ex) { SetStatus("Scan failed."); Ui.Error(this, "The scan failed:\r\n\r\n" + ex.Message); }
@@ -249,7 +263,7 @@ namespace OrclWAMP
         {
             _busy = busy;
             _progress.Visible = busy;
-            _scanBtn.Enabled = _addBtn.Enabled = _createBtn.Enabled = !busy;
+            _scanBtn.Enabled = _addBtn.Enabled = _createBtn.Enabled = _findBtn.Enabled = _manualBtn.Enabled = !busy;
             _cancelBtn.Visible = busy;
             UseWaitCursor = busy;
             if (busy) _lv.Cursor = Cursors.WaitCursor; else _lv.Cursor = Cursors.Default;
@@ -412,7 +426,7 @@ namespace OrclWAMP
                     .ToList(),
                 ManualApps = list.Where(a => !a.IsInstallable && a.Selected)
                     .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
-                    .Select(a => new ManualApp { Name = a.Name, Version = a.Version, Id = a.Id })
+                    .Select(a => a.ToManual())
                     .ToList()
             };
         }
@@ -512,7 +526,12 @@ namespace OrclWAMP
                 foreach (var a in m.ManualApps)
                 {
                     if (_all.Any(x => !x.IsInstallable && x.Name.Equals(a.Name, StringComparison.CurrentCultureIgnoreCase))) continue;
-                    _all.Add(new AppEntry { Name = a.Name, Id = a.Id ?? "", Version = a.Version ?? "", Category = AppCategory.NotAvailable, Selected = true, ManuallyAdded = true, Note = "From " + Path.GetFileName(dlg.FileName) });
+                    _all.Add(new AppEntry
+                    {
+                        Name = a.Name, Id = a.Id, Version = a.Version, Category = AppCategory.NotAvailable, Selected = true, ManuallyAdded = true,
+                        Publisher = a.Publisher, Homepage = a.Homepage, DownloadUrl = a.DownloadUrl,
+                        Note = a.Note.Length > 0 ? a.Note : "From " + Path.GetFileName(dlg.FileName)
+                    });
                 }
                 if (m.Tool == "OrclWAMP")
                 {
@@ -533,6 +552,73 @@ namespace OrclWAMP
                 try { PackageWriter.WriteCsv(dlg.FileName, _all.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)); SetStatus("Exported " + dlg.FileName); }
                 catch (Exception ex) { Ui.Error(this, ex.Message); }
             }
+        }
+
+        // ------------------------------------------------------------------ manual apps
+
+        async Task FindMatchesAsync()
+        {
+            if (_busy) return;
+            var manual = _all.Where(a => a.Category == AppCategory.NotAvailable).ToList();
+            if (manual.Count == 0) { Ui.Info(this, "There are no manual-install apps in the list. Scan the PC first."); return; }
+            if (!Winget.IsAvailable) { Ui.Warn(this, "winget is not available on this PC."); return; }
+            SetBusy(true);
+            _cts = new CancellationTokenSource();
+            List<Scanner.WingetMatch> matches;
+            try
+            {
+                matches = await Scanner.FindWingetMatchesAsync(manual, (i, n, name) => SetStatus($"Searching winget {i} of {n}: {name}"), _cts.Token);
+            }
+            catch (OperationCanceledException) { SetStatus("Search cancelled."); return; }
+            finally { SetBusy(false); }
+
+            if (matches.Count == 0) { SetStatus("No winget packages found for the manual apps."); Ui.Info(this, "winget has no packages with the same names as the manual-install apps."); return; }
+            using (var f = new MatchesForm(matches))
+            {
+                if (f.ShowDialog(this) != DialogResult.OK || f.Result.Count == 0) { SetStatus("No matches used."); return; }
+                foreach (var m in f.Result)
+                {
+                    var e = m.Entry;
+                    var src = m.Row.Source.Length > 0 ? m.Row.Source : "winget";
+                    // Same package already in the list (e.g. a Store copy of an app also installed as desktop app): merge.
+                    var existing = _all.FirstOrDefault(a => a != e && a.IsInstallable && a.Id.Equals(m.Row.Id, StringComparison.OrdinalIgnoreCase));
+                    if (existing != null) { existing.Selected = true; _all.Remove(e); continue; }
+                    e.Id = m.Row.Id;
+                    e.Version = m.Row.Version; // the old desktop version usually doesn't exist in winget (matters with pinned versions)
+                    e.Source = src;
+                    e.Category = src.Equals("msstore", StringComparison.OrdinalIgnoreCase) ? AppCategory.Store : AppCategory.Winget;
+                    e.Selected = true;
+                    e.Note = "Found by name in winget";
+                    e.Homepage = e.DownloadUrl = "";
+                }
+                Populate();
+                SetStatus($"{f.Result.Count} app(s) will now be installed with winget.");
+            }
+        }
+
+        void OpenManualApps()
+        {
+            if (_busy) return;
+            var entries = _all.Where(a => a.Category == AppCategory.NotAvailable).ToList();
+            if (entries.Count == 0) { Ui.Info(this, "There are no manual-install apps in the list. Scan the PC first."); return; }
+            var map = entries.ToDictionary(e => e.ToManual());
+            using (var f = new ManualAppsForm(map.Keys.ToList(), () =>
+            {
+                foreach (var kv in map) kv.Value.DownloadUrl = kv.Key.DownloadUrl; // keep the user's links for the package
+            }, () => OpenChecklist(map.Keys.ToList())))
+                f.ShowDialog(this);
+        }
+
+        static void OpenChecklist(List<ManualApp> apps)
+        {
+            try
+            {
+                var path = Path.Combine(Path.GetTempPath(), "OrclWAMP-" + PackageWriter.ReportName);
+                var m = new Manifest { CreatedUtc = DateTime.UtcNow.ToString("o"), SourceComputer = Environment.MachineName, ManualApps = apps };
+                File.WriteAllText(path, PackageWriter.Report(m), new System.Text.UTF8Encoding(false));
+                Ui.Open(path);
+            }
+            catch (Exception ex) { Ui.Warn(null, ex.Message); }
         }
 
         void OpenRestore()

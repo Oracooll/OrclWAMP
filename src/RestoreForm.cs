@@ -113,7 +113,7 @@ namespace OrclWAMP
             buttons.Controls.Add(_startBtn);
             buttons.Controls.Add(_cancelBtn);
             buttons.Controls.Add(_retryBtn);
-            buttons.Controls.Add(Ui.Button("Manual-install list", (s, e) => ShowManualList()));
+            buttons.Controls.Add(Ui.Button($"Manual apps && downloads ({m.ManualApps.Count})", (s, e) => OpenManualApps()));
             buttons.Controls.Add(Ui.Button("Open log", (s, e) => { if (_logFile != null && File.Exists(_logFile)) Ui.Open(_logFile); else Ui.Info(this, "No log has been written yet."); }));
             buttons.Controls.Add(_status);
             bottom.Controls.Add(buttons);
@@ -489,7 +489,7 @@ Write-Output 'Done'
                     if (failed.Any(f => f.NeedsNonAdmin))
                         msg += "\r\n\r\nSome apps refuse to install as administrator. Close OrclWAMP, start it again, answer \"No\" to the administrator prompt and click \"Retry failed\".";
                     if (reboot && !doRestart) msg += "\r\n\r\nSome apps need a restart to finish installing.";
-                    if (_m.ManualApps.Count > 0) msg += $"\r\n\r\nDon't forget the {_m.ManualApps.Count} apps on the manual-install list (button \"Manual-install list\").";
+                    if (_m.ManualApps.Count > 0) msg += $"\r\n\r\nDon't forget the {_m.ManualApps.Count} apps on the manual-install list (button \"Manual apps & downloads\").";
                     if (doRestart) msg += "\r\n\r\nThe PC restarts in 60 seconds.";
                     MessageBox.Show(this, msg, Program.AppName, MessageBoxButtons.OK, failed.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
                 }
@@ -661,18 +661,23 @@ Write-Output 'Done'
             });
         }
 
+        void OpenManualApps()
+        {
+            if (_m.ManualApps.Count == 0) { Ui.Info(this, "Every app in this package can be installed by winget – nothing to install manually."); return; }
+            using (var f = new ManualAppsForm(_m.ManualApps, () =>
+            {
+                // Keep links the user added in the package (if the USB stick is writable).
+                try { _m.Save(_manifestPath); } catch (Exception ex) { Log("Could not save the link in the package: " + ex.Message); }
+            }, ShowManualList))
+                f.ShowDialog(this);
+        }
+
         void ShowManualList()
         {
-            var report = Path.Combine(Path.GetDirectoryName(_manifestPath), PackageWriter.ReportName);
-            if (!File.Exists(report))
-            {
-                try
-                {
-                    report = Path.Combine(Path.GetTempPath(), "OrclWAMP-" + PackageWriter.ReportName);
-                    File.WriteAllText(report, PackageWriter.Report(_m), new UTF8Encoding(false));
-                }
-                catch (Exception ex) { Ui.Error(this, ex.Message); return; }
-            }
+            // Always regenerate: links may have been added in "Manual apps & downloads".
+            var report = Path.Combine(Path.GetTempPath(), "OrclWAMP-" + PackageWriter.ReportName);
+            try { File.WriteAllText(report, PackageWriter.Report(_m), new UTF8Encoding(false)); }
+            catch (Exception ex) { Ui.Error(this, ex.Message); return; }
             Ui.Open(report);
         }
 
