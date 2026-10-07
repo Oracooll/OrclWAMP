@@ -2,7 +2,7 @@
 
 # OrclWAMP – Oracooll Winget App Migration Tool
 
-**Version 1.2.001**
+**Version 1.3.001**
 
 Moving to a new PC? OrclWAMP scans your old PC, finds every app that **winget** can install, and writes a migration folder to a USB stick. On the new PC you double-click one file and your apps install themselves.
 
@@ -25,13 +25,15 @@ Get **OrclWAMP.exe** from the [latest release](https://github.com/Oracooll/OrclW
    - **Apps winget can install** are ticked. Runtimes (VC++, .NET, WindowsAppRuntime…) and apps that ship with Windows (Edge, OneDrive…) start unticked.
    - **Apps to install manually** have no winget package. Ticked ones go into an HTML checklist so you don't forget them.
 3. Optionally use **Add apps from winget…** to add apps this PC doesn't have.
-4. Click **Create migration package…** and choose your USB drive.
+4. Leave **Include Windows settings** ticked (or click **Choose settings…**) to take touchpad gestures, taskbar options, wallpaper, keyboard layouts and more along.
+5. Click **Create migration package…** and choose your USB drive.
 
 ### On the new PC
 1. Connect to the internet.
 2. Open the `OrclWAMP-Migration` folder on the USB stick and double-click **Install.cmd** (or `OrclWAMP.exe`).
 3. Check the list and click **Start installation**.
 4. Click **Manual apps & downloads** for anything winget couldn't handle. Download the installers one by one or all at once.
+5. Click **Windows settings** to apply your old PC's settings. A backup is made first, and **Undo last apply** reverses them.
 
 ![Restore mode (dark theme)](docs/restore.png)
 
@@ -39,6 +41,11 @@ Get **OrclWAMP.exe** from the [latest release](https://github.com/Oracooll/OrclW
 **Manual apps & downloads** lists them with a download link **only where OrclWAMP is sure of it**. Download them one by one (double-click) or all at once into `Downloads\OrclWAMP`. Apps without a sure link say "No link". Right-click one to set your own link or search the web.
 
 ![Manual apps & downloads](docs/manual-apps.png)
+
+### Windows settings
+Your personal Windows settings travel with the apps: touchpad gestures, mouse, keyboard layouts, taskbar and Explorer options, colours, wallpaper, regional formats, power timers and fonts. On the new PC they're applied with a backup, so **Undo** is one click away.
+
+![Windows settings](docs/settings.png)
 
 ## Features
 
@@ -55,6 +62,8 @@ Get **OrclWAMP.exe** from the [latest release](https://github.com/Oracooll/OrclW
 | Only sure links | A download link is shown **only** when OrclWAMP is sure of it: a checked official link, a link you entered, or a web app's own address. Everything else says "No link" |
 | Manual-install checklist | Printable HTML checklist of the manual apps, with the same sure-only links |
 | Themes | Light / Dark / System toggle in every window. System follows Windows live |
+| **Windows settings migration** | Takes your personal settings along: touchpad gestures, mouse, keyboard layouts & languages, taskbar/Start/Explorer options, colours, wallpaper, regional formats, power timers, user fonts, Wi-Fi (opt-in). Applied with a backup and **Undo**, and only known settings are ever written |
+| Log pane position | One click moves the restore log between the bottom and the right side. Remembered |
 | winget check and repair | On the new PC, re-registers App Installer or downloads it from Microsoft if winget is missing |
 | Skips installed apps | Apps already on the new PC are detected and skipped |
 | Robust installs | Silent installs, per-app timeout, keeps going after errors, retries automatically when another install is in progress, **Retry failed**, readable error messages |
@@ -101,7 +110,7 @@ GitHub Actions builds every push and attaches the exe to tagged releases.
 
 ## Limitations
 - Only apps with a winget (or Microsoft Store) package can be installed automatically.
-- App settings, licences and data are **not** migrated.
+- App settings, licences and personal files are **not** migrated. Windows settings are limited to the list above. Default apps, Start/taskbar pins and display scaling can't be transferred, because Windows protects them or they depend on the hardware.
 - Some installers ignore `--silent` and show their own window, or need a restart.
 
 ## License

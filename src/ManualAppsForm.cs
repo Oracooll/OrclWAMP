@@ -81,13 +81,9 @@ namespace OrclWAMP
             Controls.Add(bottom);
 
             int direct = _rows.Count(r => r.CanDownload), pages = _rows.Count(r => r.HasLink && !r.CanDownload), none = _rows.Count(r => !r.HasLink);
-            var info = new Label
-            {
-                Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(Ui.S(8), Ui.S(8), Ui.S(8), Ui.S(4)), MaximumSize = new Size(Ui.S(1120), 0),
-                Text = $"{_rows.Count} apps can't be installed by winget.  {direct} can be downloaded directly, {pages} have an official download page, " +
+            var info = Ui.InfoLabel(this,$"{_rows.Count} apps can't be installed by winget.  {direct} can be downloaded directly, {pages} have an official download page, " +
                        $"{none} have no link OrclWAMP can be sure of.\r\n" +
-                       "Double-click an app to download it (or open its page). Right-click to set your own link. Files are saved to: " + Downloads.DownloadFolder
-            };
+                       "Double-click an app to download it (or open its page). Right-click to set your own link. Files are saved to: " + Downloads.DownloadFolder);
             Controls.Add(info);
             Controls.Add(Ui.HeaderBar("Manual apps & downloads"));
 

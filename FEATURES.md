@@ -41,6 +41,12 @@ Notes from the design passes that shaped OrclWAMP (Oracooll Winget App Migration
 - **Only sure links**: no link is shown unless OrclWAMP is sure of it (checked official links, user links, web-app addresses). Publisher homepages from the registry are shown as "Publisher website" only.
 - **Find winget packages for manual apps**: an exact-name winget search turns many "manual" apps (Store and renamed installs) into automatic installs. You confirm every match.
 
+## Round 5 – Windows settings (1.3.001)
+- Per-user Windows settings travel in the package: touchpad gestures, mouse/pointer, keyboard layouts & languages, taskbar/Start/Explorer, colours, wallpaper, desktop & multitasking, regional formats, power timers, user fonts, Wi-Fi (opt-in).
+- On the new PC they're applied with a backup and Undo. A whitelist means only these settings are ever written, even from an edited package.
+- **Not possible** (Windows protects them or they depend on the hardware): default apps, Start/taskbar pins, display scaling, Night light.
+- A log pane button moves the log between the bottom and the right side.
+
 ## Rejected / deferred
 - Offline installers (downloading every installer onto the USB): many installers don't allow redistribution, it needs lots of space, and winget's `download` support is uneven. *Deferred.*
 - Migrating app settings and data: out of scope and risky.

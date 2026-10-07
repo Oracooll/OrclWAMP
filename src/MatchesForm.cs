@@ -41,13 +41,9 @@ namespace OrclWAMP
             bottom.Controls.Add(Ui.Button("Install these with winget", (s, e) => Accept(), true));
             Controls.Add(bottom);
 
-            var info = new Label
-            {
-                Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(Ui.S(8)), MaximumSize = new System.Drawing.Size(Ui.S(940), 0),
-                Text = $"winget has packages with exactly the same name for {matches.Select(m => m.Entry).Distinct().Count()} app(s). " +
+            var info = Ui.InfoLabel(this,$"winget has packages with exactly the same name for {matches.Select(m => m.Entry).Distinct().Count()} app(s). " +
                        "Ticked ones move to the automatic install list.\r\n" +
-                       "Packages are matched by name only – check the publisher/ID before using them. Names with several matches start unticked."
-            };
+                       "Packages are matched by name only – check the publisher/ID before using them. Names with several matches start unticked.");
             Controls.Add(info);
             CancelButton = cancel;
             Theme.Attach(this);

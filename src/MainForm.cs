@@ -29,6 +29,8 @@ namespace OrclWAMP
         CancellationTokenSource _cts;
         int _sortCol;
         bool _sortAsc = true, _populating, _busy, _writing;
+        readonly CheckBox _settingsChk = Ui.Check("Include Windows settings", true);
+        List<string> _settingsIds = WinSettings.DefaultIds.ToList();
 
         static readonly string[] Views = { "Apps winget can install", "Apps to install manually", "All apps" };
 
@@ -74,6 +76,9 @@ namespace OrclWAMP
             tips.SetToolTip(_pin, "Off (recommended): install the newest version.\r\nOn: install the same version as on this PC (falls back to newest if that version is gone).");
             tips.SetToolTip(_admin, "OrclWAMP asks for administrator rights once at the start on the new PC,\r\nso the individual installers don't each show a UAC prompt.\r\n\r\nOff (recommended for most people): apps install for the signed-in user;\r\nmachine-wide installers show their own UAC prompt. A few per-user apps refuse to install as administrator.");
             tips.SetToolTip(_showSystem, "Also list Windows components, drivers and runtimes that have no winget package.");
+            opts.Controls.Add(_settingsChk);
+            opts.Controls.Add(Ui.Button("Choose settings…", (s, e) => ChooseSettings()));
+            tips.SetToolTip(_settingsChk, "Also take personal Windows settings along: touchpad gestures, mouse, keyboard & languages,\r\ntaskbar & Explorer options, colours, wallpaper, regional formats, power, fonts.");
             _createBtn = Ui.Button("Create migration package…", async (s, e) => await CreatePackageAsync(), true);
             _createBtn.Padding = new Padding(Ui.S(14), Ui.S(8), Ui.S(14), Ui.S(8));
             _createBtn.Anchor = AnchorStyles.Left;
@@ -466,12 +471,15 @@ namespace OrclWAMP
             SetStatus("Writing migration package…");
             try
             {
-                try { await Task.Run(() => PackageWriter.Write(dir, m, Application.ExecutablePath)); }
+                var ids = _settingsChk.Checked && _settingsIds.Count > 0 ? _settingsIds : null;
+                var settingsLog = new List<string>();
+                try { await Task.Run(() => PackageWriter.Write(dir, m, Application.ExecutablePath, ids, settingsLog.Add)); }
                 finally { _writing = false; }
                 SetStatus("Migration package written to " + dir);
                 if (Ui.Ask(this, $"Migration package created:\r\n{dir}\r\n\r\n" +
                                  $"• {m.Packages.Count} apps will be installed automatically\r\n" +
-                                 $"• {m.ManualApps.Count} apps are on the manual-install list\r\n\r\n" +
+                                 $"• {m.ManualApps.Count} apps are on the manual-install list\r\n" +
+                                 (ids != null ? $"• {ids.Count} groups of Windows settings included\r\n" : "") + "\r\n" +
                                  "On the new PC, open this folder and double-click Install.cmd.\r\n\r\nOpen the folder now?"))
                     Ui.Open(dir);
             }
@@ -619,6 +627,17 @@ namespace OrclWAMP
                 Ui.Open(path);
             }
             catch (Exception ex) { Ui.Warn(null, ex.Message); }
+        }
+
+        void ChooseSettings()
+        {
+            using (var f = new SettingsForm(_settingsIds))
+            {
+                if (f.ShowDialog(this) != DialogResult.OK) return;
+                _settingsIds = f.SelectedIds;
+                _settingsChk.Checked = _settingsIds.Count > 0;
+                SetStatus(_settingsIds.Count + " group(s) of Windows settings will be included.");
+            }
         }
 
         void OpenRestore()

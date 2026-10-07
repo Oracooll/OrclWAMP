@@ -215,29 +215,9 @@ namespace OrclWAMP
 
         // ---------------------------------------------------------------- settings
 
-        static string SettingsFile => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OrclWAMP", "settings.ini");
+        static ThemeMode LoadMode() => Enum.TryParse(AppSettings.Get("Theme"), true, out ThemeMode m) ? m : ThemeMode.System;
 
-        static ThemeMode LoadMode()
-        {
-            try
-            {
-                foreach (var line in File.ReadAllLines(SettingsFile))
-                    if (line.StartsWith("Theme=", StringComparison.OrdinalIgnoreCase) &&
-                        Enum.TryParse(line.Substring(6).Trim(), true, out ThemeMode m)) return m;
-            }
-            catch { }
-            return ThemeMode.System;
-        }
-
-        static void SaveMode(ThemeMode m)
-        {
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(SettingsFile));
-                File.WriteAllText(SettingsFile, "Theme=" + m + "\r\n");
-            }
-            catch { }
-        }
+        static void SaveMode(ThemeMode m) => AppSettings.Set("Theme", m.ToString());
 
         static bool WindowsPrefersDark()
         {

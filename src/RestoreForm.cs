@@ -115,6 +115,11 @@ namespace OrclWAMP
             buttons.Controls.Add(_retryBtn);
             buttons.Controls.Add(Ui.Button($"Manual apps && downloads ({m.ManualApps.Count})", (s, e) => OpenManualApps()));
             buttons.Controls.Add(Ui.Button("Open log", (s, e) => { if (_logFile != null && File.Exists(_logFile)) Ui.Open(_logFile); else Ui.Info(this, "No log has been written yet."); }));
+            _settingsDir = Path.Combine(Path.GetDirectoryName(manifestPath), WinSettings.FolderName);
+            try { _settingsPack = WinSettings.Load(_settingsDir); } catch { _settingsPack = null; }
+            if (_settingsPack != null && _settingsPack.Groups.Count > 0)
+                buttons.Controls.Add(Ui.Button($"Windows settings ({_settingsPack.Groups.Count})", (s, e) => OpenSettings()));
+            buttons.Controls.Add(Ui.LogPaneButton(_split));
             buttons.Controls.Add(_status);
             bottom.Controls.Add(buttons);
             Controls.Add(bottom);
@@ -211,6 +216,7 @@ namespace OrclWAMP
             else if (_unattended) await RepairWingetAsync(); // one attempt only; marks installed apps itself on success
             _startBtn.Enabled = _wingetOk;
 
+            if (_unattended && !_elevating && !IsDisposed) await ApplySettingsUnattendedAsync();
             if (_unattended && _wingetOk && !_elevating && !IsDisposed) await InstallAsync(false);
         }
 
@@ -670,6 +676,30 @@ Write-Output 'Done'
                 try { _m.Save(_manifestPath); } catch (Exception ex) { Log("Could not save the link in the package: " + ex.Message); }
             }, ShowManualList))
                 f.ShowDialog(this);
+        }
+
+        readonly string _settingsDir;
+        readonly SettingsPack _settingsPack;
+
+        void OpenSettings()
+        {
+            if (_running) { Ui.Info(this, "Please wait until the installation has finished."); return; }
+            using (var f = new SettingsForm(_settingsPack, _settingsDir)) f.ShowDialog(this);
+        }
+
+        /// <summary>Unattended mode: apply every settings group in the package (a backup is made first).</summary>
+        async Task ApplySettingsUnattendedAsync()
+        {
+            if (_settingsPack == null || _settingsPack.Groups.Count == 0) return;
+            Log("Applying Windows settings from " + _settingsPack.SourceComputer + "…");
+            try
+            {
+                var ids = _settingsPack.Groups.Select(g => g.Id).ToList();
+                var r = await Task.Run(() => WinSettings.Apply(_settingsPack, _settingsDir, ids, l => Log("   " + l)));
+                Log($"Windows settings: {r.Applied} applied, {r.Skipped} skipped. Backup: {r.BackupFile}");
+                if (r.RestartExplorer && !_restart.Checked) { await Task.Run(() => WinSettings.RestartExplorer()); Log("File Explorer restarted."); }
+            }
+            catch (Exception ex) { Log("Windows settings could not be applied: " + ex.Message); }
         }
 
         void ShowManualList()

@@ -17,9 +17,14 @@ namespace OrclWAMP
         static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         static readonly Encoding Utf8Bom = new UTF8Encoding(true);
 
-        public static void Write(string dir, Manifest m, string exePath)
+        public static void Write(string dir, Manifest m, string exePath, ICollection<string> settingsIds = null, Action<string> log = null)
         {
             Directory.CreateDirectory(dir);
+
+            // Windows settings (optional): always start from a clean folder so old captures don't linger.
+            var settingsDir = Path.Combine(dir, WinSettings.FolderName);
+            if (Directory.Exists(settingsDir)) Directory.Delete(settingsDir, true);
+            if (settingsIds != null && settingsIds.Count > 0) WinSettings.Capture(settingsIds, settingsDir, log);
 
             var destExe = Path.Combine(dir, ExeName);
             if (!string.Equals(Path.GetFullPath(exePath), Path.GetFullPath(destExe), StringComparison.OrdinalIgnoreCase))
@@ -169,6 +174,7 @@ namespace OrclWAMP
 "  winget-packages.json      standard winget file:\r\n" +
 "                            winget import -i winget-packages.json --accept-package-agreements --accept-source-agreements --ignore-unavailable\r\n" +
 "  Install-Fallback.ps1      plain PowerShell fallback:  powershell -ExecutionPolicy Bypass -File Install-Fallback.ps1\r\n" +
+"  Settings\\                 Windows settings from the old PC (button \"Windows settings\" applies them, with Undo)\r\n" +
 "  " + ReportName + "  apps winget can't install (download links only where certain)\r\n\r\n" +
 "COMMAND LINE\r\n" +
 "  OrclWAMP.exe /restore [file]   open restore mode\r\n" +

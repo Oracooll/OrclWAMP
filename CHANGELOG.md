@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.001
+- **Windows settings migration**: take personal Windows settings to the new PC along with the apps:
+  - **Touchpad & gestures**: taps, scroll direction, three- and four-finger swipes and taps, sensitivity
+  - **Mouse & pointer**: speed, double-click, buttons, wheel, pointer scheme, size and colour
+  - **Keyboard & languages**: input languages and keyboard layouts, switch hotkey, repeat rate, NumLock, Sticky Keys prompt
+  - **Taskbar, Start & File Explorer**: file extensions, hidden files, taskbar alignment, buttons and auto-hide, Snap, Alt+Tab, search box
+  - **Colours & theme**, **Wallpaper**, **Desktop & multitasking** (clipboard history, visual effects…), **Regional formats**
+  - **Power**: screen-off, sleep and hibernate timers, lid and power-button actions
+  - **User-installed fonts**, and **Wi-Fi networks** (opt-in, because the passwords are stored readable)
+- Settings are applied on the new PC with a **backup and Undo**. Only settings from the built-in list can ever be written, even from an edited package.
+- Unattended restore applies the settings before installing the apps.
+- **Log pane button**: move the log between the bottom and the right side. The choice is remembered.
+
 ## 1.2.001
 - **Light / Dark / System theme** toggle in the header of every window. It's saved per user, System follows Windows live, and title bars, menus, lists and scrollbars are themed.
 - **Manual apps & downloads** window (scanner and restore mode): download apps winget can't install one by one or all at once into `Downloads\OrclWAMP`, open official download pages, set your own links, and run downloaded installers.

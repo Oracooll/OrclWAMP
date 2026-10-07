@@ -17,6 +17,15 @@ namespace OrclWAMP
         public static readonly Font TitleFont = new Font("Segoe UI Semibold", 12F);
         public static readonly Font HeaderFont = new Font("Segoe UI", 18F, FontStyle.Bold);
         public static readonly Image Logo = LoadLogo();
+        static Icon _appIcon;
+        public static Icon AppIcon
+        {
+            get
+            {
+                if (_appIcon == null) try { _appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+                return _appIcon;
+            }
+        }
 
         static Image LoadLogo()
         {
@@ -99,7 +108,11 @@ namespace OrclWAMP
             var wa = Screen.PrimaryScreen.WorkingArea;
             f.Size = new Size(Math.Min(S(width), wa.Width), Math.Min(S(height), wa.Height));
             f.MinimumSize = new Size(Math.Min(S(720), wa.Width), Math.Min(S(480), wa.Height));
-            try { f.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+            if (AppIcon != null)
+            {
+                f.Icon = AppIcon;
+                f.Load += (s, e) => f.Icon = AppIcon; // dialogs re-create their handle (ShowInTaskbar etc.) – set it again
+            }
         }
 
         public static bool IsAdmin()
@@ -135,7 +148,7 @@ namespace OrclWAMP
             catch { return false; }
         }
 
-        /// <summary>The "OrclWAMP 1.2.001 – subtitle" header shown at the top-left of every window.</summary>
+        /// <summary>The "OrclWAMP 1.3.001 – subtitle" header shown at the top-left of every window.</summary>
         public static Control AppHeader(string subtitle)
         {
             var p = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = new Padding(0), Padding = new Padding(0) };
@@ -150,6 +163,48 @@ namespace OrclWAMP
             if (!string.IsNullOrEmpty(subtitle))
                 p.Controls.Add(new Label { Text = subtitle, UseMnemonic = false, AutoSize = true, Font = TitleFont, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(0, 0, 0, S(3)) });
             return p;
+        }
+
+        /// <summary>
+        /// Button that moves the log pane of <paramref name="split"/> (Panel2) between the bottom and the right side.
+        /// The choice is remembered for all windows.
+        /// </summary>
+        public static Button LogPaneButton(SplitContainer split)
+        {
+            var b = Button("", null);
+            void Show(bool right)
+            {
+                split.Orientation = right ? Orientation.Vertical : Orientation.Horizontal;
+                try
+                {
+                    int size = right ? split.Width : split.Height;
+                    split.SplitterDistance = Math.Max(split.Panel1MinSize, Math.Min(size - split.Panel2MinSize - 1, size * (right ? 58 : 62) / 100));
+                }
+                catch { }
+                b.Text = right ? "Log: move to bottom ⤓" : "Log: move to right ⇥";
+            }
+            bool startRight = string.Equals(AppSettings.Get("LogPane"), "Right", StringComparison.OrdinalIgnoreCase);
+            b.Text = startRight ? "Log: move to bottom ⤓" : "Log: move to right ⇥";
+            b.Click += (s, e) =>
+            {
+                bool right = split.Orientation != Orientation.Vertical;
+                Show(right);
+                AppSettings.Set("LogPane", right ? "Right" : "Bottom");
+            };
+            // Apply the saved layout once the window has its real size.
+            split.HandleCreated += (s, e) => split.BeginInvoke(new Action(() => Show(startRight)));
+            new ToolTip().SetToolTip(b, "Show the log below the list or next to it");
+            return b;
+        }
+
+        /// <summary>A multi-line explanation label docked at the top that wraps to the window's width.</summary>
+        public static Label InfoLabel(Form owner, string text)
+        {
+            var l = new Label { Text = text, Dock = DockStyle.Top, AutoSize = true, UseMnemonic = false, Padding = new Padding(S(8), S(6), S(8), S(6)) };
+            void Fit() => l.MaximumSize = new Size(Math.Max(S(200), owner.ClientSize.Width - S(4)), 0);
+            Fit();
+            owner.Resize += (s, e) => Fit();
+            return l;
         }
 
         /// <summary>Header row: app name/version on the left, Light / Dark / System toggle on the right.</summary>
