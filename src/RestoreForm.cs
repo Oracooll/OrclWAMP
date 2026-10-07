@@ -22,6 +22,7 @@ namespace OrclWAMP
             public InstallOutcome? Outcome;
             public bool NeedsNonAdmin;
             public bool Installed; // already present on this PC before we started
+            public Func<Color> Color = () => Theme.Text;
         }
 
         /// <summary>Exit code the elevated copy returns to ask the original (unelevated) window to carry on.</summary>
@@ -48,8 +49,10 @@ namespace OrclWAMP
 
         public int ExitCode { get; private set; }
 
-        static readonly Color Green = Color.FromArgb(0, 120, 40), Red = Color.FromArgb(190, 30, 30), Orange = Color.FromArgb(170, 95, 0),
-            Gray = SystemColors.GrayText, Blue = Color.FromArgb(0, 90, 180);
+        // Colour roles (resolved against the current theme, so rows re-colour when the theme changes).
+        static readonly Func<Color> Green = () => Theme.Ok, Red = () => Theme.Fail, Orange = () => Theme.Warn,
+            Gray = () => Theme.Muted, Blue = () => Theme.Busy, Normal = () => Theme.Text;
+        Func<Color> _wingetColor = () => Theme.Text;
 
         public RestoreForm(Manifest m, string manifestPath, bool unattended, bool elevatedLaunch, string launcherSid)
         {
@@ -76,7 +79,7 @@ namespace OrclWAMP
             _lv.ContextMenuStrip = cm;
             _split.Panel1.Controls.Add(_lv);
             _log.Multiline = true; _log.ReadOnly = true; _log.ScrollBars = ScrollBars.Both; _log.WordWrap = false;
-            _log.Dock = DockStyle.Fill; _log.Font = new Font("Consolas", 9F); _log.BackColor = SystemColors.Window;
+            _log.Dock = DockStyle.Fill; _log.Font = new Font("Consolas", 9F);
             _split.Panel2.Controls.Add(_log);
             Controls.Add(_split);
 
@@ -118,7 +121,9 @@ namespace OrclWAMP
 
             // ---- header ----
             var head = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Padding = new Padding(Ui.S(8), Ui.S(6), Ui.S(8), Ui.S(2)) };
-            head.Controls.Add(Ui.AppHeader("Install apps on this PC"));
+            var headerBar = Ui.HeaderBar("Install apps on this PC");
+            headerBar.Dock = DockStyle.Fill;
+            head.Controls.Add(headerBar);
             var info = new Label { AutoSize = true, Font = Ui.BoldFont, Margin = new Padding(Ui.S(3), Ui.S(4), Ui.S(3), Ui.S(2)) };
             info.Text = $"{m.Packages.Count} apps from \"{m.SourceComputer}\"  ·  package created {PackageWriter.FormatDate(m.CreatedUtc)}";
             head.Controls.Add(info);
@@ -154,6 +159,7 @@ namespace OrclWAMP
                 try { _split.SplitterDistance = Math.Max(_split.Panel1MinSize, Math.Min(_split.Height - _split.Panel2MinSize - 1, _split.Height * 62 / 100)); }
                 catch { }
             };
+            Theme.Attach(this, RefreshThemeColors);
             Shown += async (s, e) => await StartupAsync();
             FormClosing += OnClosing;
         }
@@ -267,14 +273,16 @@ namespace OrclWAMP
                 _wingetLabel.Text = Winget.IsOutdated
                     ? "winget " + Winget.Version + " is outdated – updating is recommended."
                     : "winget " + Winget.Version + " is ready.";
-                _wingetLabel.ForeColor = Winget.IsOutdated ? Orange : Green;
+                _wingetColor = Winget.IsOutdated ? Orange : Green;
+                _wingetLabel.ForeColor = _wingetColor();
                 Log("winget " + Winget.Version + ": " + Winget.Exe);
             }
             else
             {
                 _fixWingetBtn.Text = "Install / repair winget";
                 _wingetLabel.Text = "winget was not found on this PC – click \"Install / repair winget\".";
-                _wingetLabel.ForeColor = Red;
+                _wingetColor = Red;
+                _wingetLabel.ForeColor = _wingetColor();
                 _fixWingetBtn.Visible = true;
                 Log("winget was not found.");
             }
@@ -423,7 +431,7 @@ Write-Output 'Done'
                 var timeout = TimeSpan.FromMinutes((double)_timeout.Value);
                 Log("");
                 Log($"=== Installing {queue.Count} app(s) – {DateTime.Now:yyyy-MM-dd HH:mm} ===");
-                foreach (var i in queue) SetItem(i, "Queued", SystemColors.WindowText);
+                foreach (var i in queue) SetItem(i, "Queued", Normal);
 
                 int n = 0;
                 foreach (var i in queue)
@@ -596,10 +604,19 @@ Write-Output 'Done'
             finally { _programmaticCheck = false; }
         }
 
-        static void SetItem(Item i, string status, Color color)
+        static void SetItem(Item i, string status, Func<Color> color)
         {
             i.Lvi.SubItems[4].Text = status;
-            i.Lvi.ForeColor = color;
+            i.Color = color;
+            i.Lvi.ForeColor = color();
+        }
+
+        void RefreshThemeColors()
+        {
+            _lv.BeginUpdate();
+            foreach (var i in _items) { i.Lvi.ForeColor = i.Color(); i.Lvi.BackColor = Theme.Surface; }
+            _lv.EndUpdate();
+            _wingetLabel.ForeColor = _wingetColor();
         }
 
         void SetStatus(string text) => BeginInvokeSafe(() => _status.Text = text);

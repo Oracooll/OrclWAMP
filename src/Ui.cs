@@ -16,7 +16,6 @@ namespace OrclWAMP
         public static readonly Font BoldFont = new Font("Segoe UI", 9F, FontStyle.Bold);
         public static readonly Font TitleFont = new Font("Segoe UI Semibold", 12F);
         public static readonly Font HeaderFont = new Font("Segoe UI", 18F, FontStyle.Bold);
-        public static readonly Color Accent = Color.FromArgb(214, 90, 10);
         public static readonly Image Logo = LoadLogo();
 
         static Image LoadLogo()
@@ -77,6 +76,12 @@ namespace OrclWAMP
                 AllowColumnReorder = true
             };
             DoubleBuffer(lv);
+            // Owner-drawn header so it follows the theme; rows/checkboxes keep the native drawing.
+            lv.OwnerDraw = true;
+            lv.DrawColumnHeader += (s, e) => Theme.DrawHeader(lv, e);
+            lv.DrawItem += (s, e) => e.DrawDefault = true;
+            lv.DrawSubItem += (s, e) => e.DrawDefault = true;
+            lv.HandleCreated += (s, e) => Theme.ApplyNative(lv);
             return lv;
         }
 
@@ -140,10 +145,64 @@ namespace OrclWAMP
                     Image = Logo, SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(S(40), S(40)),
                     Anchor = AnchorStyles.Left, Margin = new Padding(0, 0, S(6), 0)
                 });
-            p.Controls.Add(new Label { Text = Program.AppName, AutoSize = true, Font = HeaderFont, ForeColor = Accent, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(S(2), 0, 0, 0) });
-            p.Controls.Add(new Label { Text = Program.VersionText, AutoSize = true, Font = TitleFont, ForeColor = SystemColors.GrayText, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(S(2), 0, S(14), S(3)) });
+            p.Controls.Add(new Label { Text = Program.AppName, Tag = "accent", AutoSize = true, Font = HeaderFont, ForeColor = Theme.Accent, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(S(2), 0, 0, 0) });
+            p.Controls.Add(new Label { Text = Program.VersionText, Tag = "muted", AutoSize = true, Font = TitleFont, ForeColor = Theme.Muted, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(S(2), 0, S(14), S(3)) });
             if (!string.IsNullOrEmpty(subtitle))
                 p.Controls.Add(new Label { Text = subtitle, AutoSize = true, Font = TitleFont, Anchor = AnchorStyles.Left | AnchorStyles.Bottom, Margin = new Padding(0, 0, 0, S(3)) });
+            return p;
+        }
+
+        /// <summary>Header row: app name/version on the left, Light / Dark / System toggle on the right.</summary>
+        public static TableLayoutPanel HeaderBar(string subtitle)
+        {
+            var t = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 2, RowCount = 1, Margin = new Padding(0) };
+            t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            var left = AppHeader(subtitle);
+            left.Anchor = AnchorStyles.Left;
+            var toggle = ThemeToggle();
+            toggle.Anchor = AnchorStyles.Right;
+            t.Controls.Add(left, 0, 0);
+            t.Controls.Add(toggle, 1, 0);
+            return t;
+        }
+
+        /// <summary>Three-segment Light / Dark / System switch; all open windows stay in sync.</summary>
+        public static Control ThemeToggle()
+        {
+            var p = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = new Padding(S(8), 0, 0, 0), Padding = new Padding(0) };
+            var tips = new ToolTip();
+            bool syncing = false;
+            var buttons = new System.Collections.Generic.List<RadioButton>();
+            foreach (var (mode, text, tip) in new[]
+            {
+                (ThemeMode.Light, "☀  Light", "Light theme"),
+                (ThemeMode.Dark, "☾  Dark", "Dark theme"),
+                (ThemeMode.System, "◐  System", "Follow the Windows setting")
+            })
+            {
+                var rb = new RadioButton
+                {
+                    Text = text, Tag = mode, Appearance = Appearance.Button, AutoSize = true, TextAlign = ContentAlignment.MiddleCenter,
+                    FlatStyle = FlatStyle.Flat, Padding = new Padding(S(6), S(1), S(6), S(1)), Margin = new Padding(0),
+                    Checked = Theme.Mode == mode, Cursor = Cursors.Hand
+                };
+                tips.SetToolTip(rb, tip);
+                rb.CheckedChanged += (s, e) => { if (rb.Checked && !syncing) Theme.Mode = mode; };
+                buttons.Add(rb);
+                p.Controls.Add(rb);
+            }
+            // Keep every window's toggle in step with the current mode.
+            Action sync = () =>
+            {
+                if (p.IsDisposed) return;
+                syncing = true;
+                foreach (var b in buttons) b.Checked = (ThemeMode)b.Tag == Theme.Mode;
+                syncing = false;
+            };
+            Action handler = () => { if (p.IsHandleCreated && !p.IsDisposed) try { p.BeginInvoke(sync); } catch (InvalidOperationException) { } };
+            Theme.Changed += handler;
+            p.Disposed += (s, e) => Theme.Changed -= handler;
             return p;
         }
 

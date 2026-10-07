@@ -53,6 +53,7 @@ namespace OrclWAMP
             AcceptButton = _searchBtn;
             CancelButton = cancel;
             FormClosing += (s, e) => _cts?.Cancel();
+            Theme.Attach(this);
             Shown += (s, e) => _query.Focus();
         }
 

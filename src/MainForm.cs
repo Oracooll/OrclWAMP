@@ -31,7 +31,6 @@ namespace OrclWAMP
         bool _sortAsc = true, _populating, _busy, _writing;
 
         static readonly string[] Views = { "Apps winget can install", "Apps to install manually", "All apps" };
-        static readonly Color ManualColor = Color.FromArgb(156, 92, 0);
 
         public MainForm()
         {
@@ -108,8 +107,8 @@ namespace OrclWAMP
             top.Controls.Add(Ui.Button("Invert", (s, e) => SetVisibleChecked(a => !a.Selected)));
             Controls.Add(top);
 
-            var header = new Panel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(Ui.S(8), Ui.S(6), Ui.S(8), 0) };
-            header.Controls.Add(Ui.AppHeader("Winget App Migration Tool"));
+            var header = Ui.HeaderBar("Winget App Migration Tool");
+            header.Padding = new Padding(Ui.S(8), Ui.S(6), Ui.S(8), 0);
             Controls.Add(header);
 
             Controls.Add(BuildMenu());
@@ -121,6 +120,7 @@ namespace OrclWAMP
             Controls.Add(strip);
 
             ResumeLayout(true);
+            Theme.Attach(this, Populate);
             SetStatus("Ready.");
             UpdateCounts();
             Shown += async (s, e) => await StartupAsync();
@@ -326,8 +326,8 @@ namespace OrclWAMP
             it.SubItems.Add(a.Version);
             it.SubItems.Add(a.Source.Length > 0 ? a.Source : "–");
             it.SubItems.Add(a.Note);
-            if (a.Category == AppCategory.NotAvailable) it.ForeColor = ManualColor;
-            else if (a.Category == AppCategory.System) it.ForeColor = SystemColors.GrayText;
+            if (a.Category == AppCategory.NotAvailable) it.ForeColor = Theme.Manual;
+            else if (a.Category == AppCategory.System) it.ForeColor = Theme.Muted;
             it.ToolTipText = a.IsInstallable
                 ? "Ticked = install on the new PC"
                 : "No winget package. Ticked = add to the manual-install report";
