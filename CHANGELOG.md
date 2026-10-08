@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.001
+- **Personal files**: copy Desktop, Documents, Pictures, Music, Videos, Downloads and your own folders into the package and back onto the new PC.
+  - Shows sizes first.
+  - Leaves out OneDrive folders.
+  - Skips identical files, and keeps both copies on conflicts.
+  - Warns about FAT32 and free space.
+- **App settings & bookmarks**: Edge, Chrome and Brave bookmarks, the Firefox bookmark backup, Windows Terminal, VS Code (settings, key bindings, snippets and its extensions reinstalled), Notepad++, Double Commander, Total Commander, PowerShell profiles, Git and SSH keys. Applied with a backup and Undo, and only to known locations.
+- **Password-protected package**: Wi-Fi passwords and SSH keys are encrypted with your password (AES-256, PBKDF2-SHA256, HMAC check). They're asked for only when needed on the new PC.
+- **App updates** (upgrade mode): see which apps on any PC have newer versions and update the ticked ones. Also available as `OrclWAMP.exe /upgrade`.
+- **Migration report**: one page on the new PC covering installed and failed apps, manual apps with sure links, settings, app settings and copied files. Unattended restores write it automatically.
+- **Update check**: a link appears in the header when a newer OrclWAMP is on GitHub. It checks at most once a day and never downloads anything by itself.
+- **Bulgarian interface**: EN / BG switch in the header of every window. The choice is remembered.
+- Unattended restore now also applies app settings and copies personal files after installing the apps.
+
 ## 1.3.002
 - Long name changed to **Oracooll Winget App Migration Program** so it matches the OrclWAMP acronym. This covers the window titles, header, About box, exe properties, README and package README.
 

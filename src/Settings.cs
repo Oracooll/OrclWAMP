@@ -8,6 +8,7 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
+using static OrclWAMP.Lang;
 
 namespace OrclWAMP
 {
@@ -192,7 +193,7 @@ namespace OrclWAMP
             new SettingDef
             {
                 Id = "wifi", Name = "Wi-Fi networks (with passwords)", DefaultOn = false, Sensitive = true,
-                Description = "Saved Wi-Fi networks so the new PC connects automatically. Passwords are stored readable in the package – keep the USB stick safe"
+                Description = "Saved Wi-Fi networks so the new PC connects automatically – only in a password-protected package (encrypted)"
             },
         };
 
@@ -227,7 +228,7 @@ namespace OrclWAMP
                         case "wifi": CaptureWifi(g, dir); break;
                     }
                 }
-                catch (Exception ex) { log?.Invoke(def.Name + ": " + ex.Message); }
+                catch (Exception ex) { log?.Invoke(T(def.Name) + ": " + ex.Message); }
                 if (g.Count > 0) pack.Groups.Add(g);
             }
             if (dir != null) File.WriteAllText(Path.Combine(dir, FileName), Json.Serialize(pack), new UTF8Encoding(false));
@@ -371,6 +372,17 @@ namespace OrclWAMP
 
         // ---------------------------------------------------------------- apply (new PC)
 
+        /// <summary>Adds the groups of <paramref name="extra"/> to the settings.json in <paramref name="dir"/> (creating it if needed).</summary>
+        public static void Merge(string dir, SettingsPack extra)
+        {
+            if (extra == null || extra.Groups.Count == 0) return;
+            Directory.CreateDirectory(dir);
+            var pack = Load(dir) ?? new SettingsPack { CreatedUtc = extra.CreatedUtc, SourceComputer = extra.SourceComputer, SourceOs = extra.SourceOs, SourceBuild = extra.SourceBuild };
+            pack.Groups.RemoveAll(g => extra.Groups.Any(x => x.Id == g.Id));
+            pack.Groups.AddRange(extra.Groups);
+            File.WriteAllText(Path.Combine(dir, FileName), Json.Serialize(pack), new UTF8Encoding(false));
+        }
+
         public static SettingsPack Load(string dir)
         {
             var file = Path.Combine(dir, FileName);
@@ -390,6 +402,13 @@ namespace OrclWAMP
             p.SourceComputer = p.SourceComputer ?? ""; p.SourceOs = p.SourceOs ?? ""; p.CreatedUtc = p.CreatedUtc ?? "";
             return p;
         }
+
+        /// <summary>Folder with the decrypted protected items of the package (set by the caller), or null.</summary>
+        public static string SecretsRoot;
+
+        /// <summary>True if the Wi-Fi profiles are only in the encrypted container (password needed).</summary>
+        public static bool WifiNeedsPassword(SettingsPack pack, string dir) =>
+            pack.Groups.Any(g => g.Id == "wifi" && g.Extra.Any(e => e.Name == "wifiProfile"));
 
         public static string BackupDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OrclWAMP", "Backups");
 
@@ -412,7 +431,7 @@ namespace OrclWAMP
             res.BackupFile = Path.Combine(BackupDir, "settings-backup-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + ".json");
             void SaveBackup() => File.WriteAllText(res.BackupFile, Json.Serialize(backup), new UTF8Encoding(false));
             try { SaveBackup(); }
-            catch (Exception ex) { throw new IOException("A backup of the current settings could not be saved, so nothing was changed. " + ex.Message, ex); }
+            catch (Exception ex) { throw new IOException(T("A backup of the current settings could not be saved, so nothing was changed.") + " " + ex.Message, ex); }
 
             var backedUp = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             try
@@ -423,12 +442,12 @@ namespace OrclWAMP
                 if (def == null) continue;
                 var bg = new SettingsGroupData { Id = g.Id };
                 backup.Groups.Add(bg);
-                log?.Invoke(def.Name + "…");
+                log?.Invoke(T(def.Name) + "…");
 
                 foreach (var v in g.Values)
                 {
                     // Only values from the built-in list are ever written – the file on the USB stick could have been edited.
-                    if (!IsAllowed(def, v)) { res.Skipped++; log?.Invoke($"   skipped (not an allowed setting): {v.Key}\\{v.Name}"); continue; }
+                    if (!IsAllowed(def, v)) { res.Skipped++; log?.Invoke("   " + F("skipped (not an allowed setting): {0}", v.Key + "\\" + v.Name)); continue; }
                     try
                     {
                         // Back up the ORIGINAL value only once, even if the file lists a value twice.
@@ -439,7 +458,7 @@ namespace OrclWAMP
                     catch (Exception ex)
                     {
                         res.Skipped++;
-                        log?.Invoke($"   skipped {v.Name}: " + (ex is UnauthorizedAccessException || ex is System.Security.SecurityException ? "protected by Windows" : ex.Message));
+                        log?.Invoke("   " + F("skipped {0}: {1}", v.Name, ex is UnauthorizedAccessException || ex is System.Security.SecurityException ? T("protected by Windows") : ex.Message));
                     }
                 }
 
@@ -464,7 +483,7 @@ namespace OrclWAMP
             finally
             {
                 // Whatever happened, keep the backup of everything changed so far (Undo).
-                try { SaveBackup(); } catch (Exception ex) { log?.Invoke("Could not update the backup: " + ex.Message); }
+                try { SaveBackup(); } catch (Exception ex) { log?.Invoke(F("Could not update the backup: {0}", ex.Message)); }
             }
 
             ApplyLive(chosen);
@@ -498,7 +517,11 @@ namespace OrclWAMP
                 {
                     try
                     {
-                        if (e.Name == "wallpaperPath" && File.Exists(e.Value)) SetWallpaper(e.Value);
+                        if (e.Name == "wallpaperPath" && File.Exists(e.Value))
+                        {
+                            var original = g.Extra.FirstOrDefault(x => x.Name == "wallpaperOriginal")?.Value;
+                            SetWallpaper(!string.IsNullOrEmpty(original) && File.Exists(original) ? original : e.Value);
+                        }
                         else if (e.Name == "language") { /* collected below */ }
                         else if (e.Name.StartsWith("power:")) ApplyPowerValue(e.Name, e.Value);
                     }
@@ -527,7 +550,7 @@ namespace OrclWAMP
 
         static void WriteValue(RegValueData v)
         {
-            if (!Enum.TryParse(v.Kind, out RegistryValueKind kind)) throw new InvalidDataException("unknown value type");
+            if (!Enum.TryParse(v.Kind, out RegistryValueKind kind)) throw new InvalidDataException(T("unknown value type"));
             object value;
             switch (kind)
             {
@@ -537,15 +560,15 @@ namespace OrclWAMP
                 case RegistryValueKind.QWord: value = long.Parse(v.Text); break;
                 case RegistryValueKind.Binary:
                     var bytes = Convert.FromBase64String(v.Base64 ?? "");
-                    if (bytes.Length > 4096) throw new InvalidDataException("value too large");
+                    if (bytes.Length > 4096) throw new InvalidDataException(T("value too large"));
                     value = bytes; break;
                 case RegistryValueKind.MultiString: value = (v.Multi ?? new string[0]).Select(Limit).ToArray(); break;
-                default: throw new InvalidDataException("unsupported value type");
+                default: throw new InvalidDataException(T("unsupported value type"));
             }
             using (var k = Registry.CurrentUser.CreateSubKey(v.Key)) k.SetValue(v.Name, value, kind);
         }
 
-        static string Limit(string s) => s.Length > 4096 ? throw new InvalidDataException("value too long") : s;
+        static string Limit(string s) => s.Length > 4096 ? throw new InvalidDataException(T("value too long")) : s;
 
         static int ApplyLanguages(SettingsGroupData g, SettingsGroupData backup, Action<string> log)
         {
@@ -577,8 +600,8 @@ namespace OrclWAMP
             sb.Append("Set-WinUserLanguageList $l -Force; 'ok'");
             var r = RunPs(sb.ToString());
             bool ok = r.Contains("ok");
-            log?.Invoke(ok ? "   input languages and keyboard layouts set: " + string.Join(", ", langs.Select(x => x.Split('|')[0]))
-                           : "   could not set the input languages: " + r.Trim());
+            log?.Invoke(ok ? "   " + F("input languages and keyboard layouts set: {0}", string.Join(", ", langs.Select(x => x.Split('|')[0])))
+                           : "   " + F("could not set the input languages: {0}", r.Trim()));
             return ok;
         }
 
@@ -588,7 +611,15 @@ namespace OrclWAMP
             if (string.IsNullOrEmpty(name) || name != Path.GetFileName(name) || !ImageExt.Contains(Path.GetExtension(name).ToLowerInvariant())) return 0;
             var src = Path.Combine(dir, name);
             if (!File.Exists(src)) return 0;
-            // Keep a copy of the current picture so Undo works even if Windows only has its internal copy.
+            // Remember the current picture: its original path (preferred by Undo) and a copy in case that file is gone later.
+            using (var dk = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop"))
+            {
+                var current = dk?.GetValue("WallPaper") as string;
+                // Not when the current picture is OrclWAMP's own copy – Apply is about to overwrite exactly that file.
+                var ownDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "OrclWAMP", "Wallpaper");
+                if (!string.IsNullOrEmpty(current) && File.Exists(current) && !current.StartsWith(ownDir, StringComparison.OrdinalIgnoreCase))
+                    backup.Extra.Add(new NameValue { Name = "wallpaperOriginal", Value = current });
+            }
             var keep = new SettingsGroupData();
             CaptureWallpaper(keep, BackupDir);
             var kept = keep.Extra.FirstOrDefault()?.Value;
@@ -602,7 +633,7 @@ namespace OrclWAMP
             var target = Path.Combine(targetDir, name);
             File.Copy(src, target, true);
             SetWallpaper(target);
-            log?.Invoke("   wallpaper set");
+            log?.Invoke("   " + T("wallpaper set"));
             return 1;
         }
 
@@ -617,10 +648,10 @@ namespace OrclWAMP
             foreach (var e in g.Extra.Where(x => x.Name.StartsWith("power:")))
             {
                 if (ApplyPowerValue(e.Name, e.Value)) n++;
-                else log?.Invoke("   could not set " + e.Name.Substring(6));
+                else log?.Invoke("   " + F("could not set {0}", e.Name.Substring(6)));
             }
             Run("powercfg.exe", "/setactive SCHEME_CURRENT", 20000);
-            if (n > 0) log?.Invoke($"   {n} power setting(s) applied");
+            if (n > 0) log?.Invoke("   " + F("{0} power setting(s) applied", n));
             return n;
         }
 
@@ -653,12 +684,12 @@ namespace OrclWAMP
                     AddFontResource(target);
                     n++;
                 }
-                catch (Exception ex) { log?.Invoke($"   font {file}: {ex.Message}"); }
+                catch (Exception ex) { log?.Invoke("   " + F("font {0}: {1}", file, ex.Message)); }
             }
             if (n > 0)
             {
                 SendMessageTimeout(new IntPtr(0xFFFF), 0x001D /* WM_FONTCHANGE */, IntPtr.Zero, null, 0x0002, 3000, out _);
-                log?.Invoke($"   {n} font(s) installed");
+                log?.Invoke("   " + F("{0} font(s) installed", n));
             }
             return n;
         }
@@ -670,12 +701,14 @@ namespace OrclWAMP
             {
                 var file = e.Value;
                 if (file != Path.GetFileName(file) || !file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)) continue;
-                var path = Path.Combine(dir, "wifi", file);
+                // Wi-Fi profiles only ever come from the decrypted container – a readable copy in a package is not from OrclWAMP.
+                if (SecretsRoot == null) continue;
+                var path = Path.Combine(SecretsRoot, FolderName, "wifi", file);
                 if (!File.Exists(path)) continue;
                 if (RunExit("netsh.exe", "wlan add profile filename=" + Winget.Quote(path) + " user=current") == 0) n++;
-                else log?.Invoke("   could not add Wi-Fi profile " + file);
+                else log?.Invoke("   " + F("could not add Wi-Fi profile {0}", file));
             }
-            if (n > 0) log?.Invoke($"   {n} Wi-Fi network(s) added");
+            if (n > 0) log?.Invoke("   " + F("{0} Wi-Fi network(s) added", n));
             return n;
         }
 

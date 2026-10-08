@@ -2,10 +2,13 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using static OrclWAMP.Lang;
 
 namespace OrclWAMP
 {
@@ -67,7 +70,7 @@ namespace OrclWAMP
             new Label { Text = text, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(S(6), S(3), S(3), S(3)) };
 
         public static CheckBox Check(string text, bool value) =>
-            new CheckBox { Text = text, Checked = value, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(S(6), S(4), S(6), S(4)) };
+            new CheckBox { Text = text, Checked = value, AutoSize = true, UseMnemonic = false, Anchor = AnchorStyles.Left, Margin = new Padding(S(6), S(4), S(6), S(4)) };
 
         public static FlowLayoutPanel Flow(DockStyle dock) =>
             new FlowLayoutPanel { Dock = dock, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true, Padding = new Padding(S(4)) };
@@ -148,7 +151,7 @@ namespace OrclWAMP
             catch { return false; }
         }
 
-        /// <summary>The "OrclWAMP 1.3.002 – subtitle" header shown at the top-left of every window.</summary>
+        /// <summary>The "OrclWAMP 1.4.001 – subtitle" header shown at the top-left of every window.</summary>
         public static Control AppHeader(string subtitle)
         {
             var p = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = new Padding(0), Padding = new Padding(0) };
@@ -181,10 +184,10 @@ namespace OrclWAMP
                     split.SplitterDistance = Math.Max(split.Panel1MinSize, Math.Min(size - split.Panel2MinSize - 1, size * (right ? 58 : 62) / 100));
                 }
                 catch { }
-                b.Text = right ? "Log: move to bottom ⤓" : "Log: move to right ⇥";
+                b.Text = right ? T("Log: move to bottom ⤓") : T("Log: move to right ⇥");
             }
             bool startRight = string.Equals(AppSettings.Get("LogPane"), "Right", StringComparison.OrdinalIgnoreCase);
-            b.Text = startRight ? "Log: move to bottom ⤓" : "Log: move to right ⇥";
+            b.Text = startRight ? T("Log: move to bottom ⤓") : T("Log: move to right ⇥");
             b.Click += (s, e) =>
             {
                 bool right = split.Orientation != Orientation.Vertical;
@@ -193,7 +196,7 @@ namespace OrclWAMP
             };
             // Apply the saved layout once the window has its real size.
             split.HandleCreated += (s, e) => split.BeginInvoke(new Action(() => Show(startRight)));
-            new ToolTip().SetToolTip(b, "Show the log below the list or next to it");
+            new ToolTip().SetToolTip(b, T("Show the log below the list or next to it"));
             return b;
         }
 
@@ -215,11 +218,102 @@ namespace OrclWAMP
             t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             var left = AppHeader(subtitle);
             left.Anchor = AnchorStyles.Left;
-            var toggle = ThemeToggle();
-            toggle.Anchor = AnchorStyles.Right;
+            var right = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = new Padding(0), Padding = new Padding(0), Anchor = AnchorStyles.Right };
+            right.Controls.Add(UpdateLink());
+            right.Controls.Add(LanguageToggle());
+            right.Controls.Add(ThemeToggle());
             t.Controls.Add(left, 0, 0);
-            t.Controls.Add(toggle, 1, 0);
+            t.Controls.Add(right, 1, 0);
             return t;
+        }
+
+        // ---- "busy" tracking (installing, copying, writing a package…) ----
+        static int _busyCount;
+        public static bool AnyBusy => System.Threading.Volatile.Read(ref _busyCount) > 0;
+
+        /// <summary>Marks a long operation; dispose when it ends.</summary>
+        public static IDisposable Busy()
+        {
+            System.Threading.Interlocked.Increment(ref _busyCount);
+            return new Disposer(() => System.Threading.Interlocked.Decrement(ref _busyCount));
+        }
+
+        /// <summary>
+        /// Restarts OrclWAMP with the same package, but never with /unattended or elevation arguments
+        /// (a restart must not start installing on its own). Only if every window agrees to close.
+        /// </summary>
+        static void RestartApp()
+        {
+            var keep = new System.Collections.Generic.List<string>();
+            var args = Environment.GetCommandLineArgs();
+            for (int i = 1; i < args.Length; i++)
+            {
+                var a = args[i].TrimStart('/', '-').ToLowerInvariant();
+                if (a == "unattended" || a == "auto" || a == "quiet" || a == "elevated") continue;
+                if (a == "launcher") { if (i + 1 < args.Length && !args[i + 1].StartsWith("/")) i++; continue; }
+                var arg = args[i];
+                // A package path given relative to the old working folder must still work after the restart.
+                if (!arg.StartsWith("/") && !arg.StartsWith("-")) try { arg = Path.GetFullPath(arg); } catch { }
+                keep.Add(Winget.Quote(arg));
+            }
+            var ce = new CancelEventArgs();
+            Application.Exit(ce);
+            if (ce.Cancel) return; // a window refused to close (still busy)
+            try { Process.Start(new ProcessStartInfo(Application.ExecutablePath, string.Join(" ", keep)) { UseShellExecute = true, WorkingDirectory = Program.AppDir })?.Dispose(); }
+            catch { }
+        }
+
+        static Task<UpdateCheck.Result> _updateTask;
+
+        /// <summary>"New version x available" link – hidden unless GitHub has a newer release.</summary>
+        static Control UpdateLink()
+        {
+            var link = new LinkLabel { AutoSize = true, Visible = false, Anchor = AnchorStyles.Left, Margin = new Padding(0, S(6), S(10), 0), LinkColor = Theme.Accent, ActiveLinkColor = Theme.Accent, Tag = "accent" };
+            link.HandleCreated += async (s, e) =>
+            {
+                if (_updateTask == null) _updateTask = UpdateCheck.CheckAsync();
+                var r = await _updateTask;
+                if (r == null || link.IsDisposed) return;
+                link.Text = Lang.F("New version {0} available", r.Version);
+                link.Visible = true;
+                link.LinkClicked += (s2, e2) => Open(r.Url);
+                new ToolTip().SetToolTip(link, r.Url);
+            };
+            return link;
+        }
+
+        /// <summary>EN / BG switch. The new language is used after OrclWAMP restarts.</summary>
+        static Control LanguageToggle()
+        {
+            var p = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = new Padding(0, 0, S(8), 0), Padding = new Padding(0) };
+            foreach (var (code, text) in new[] { ("en", "EN"), ("bg", "BG") })
+            {
+                var rb = new RadioButton
+                {
+                    Text = text, Appearance = Appearance.Button, AutoSize = true, TextAlign = ContentAlignment.MiddleCenter, FlatStyle = FlatStyle.Flat,
+                    Padding = new Padding(S(4), S(1), S(4), S(1)), Margin = new Padding(0), Checked = Lang.Code == code, Cursor = Cursors.Hand
+                };
+                new ToolTip().SetToolTip(rb, code == "en" ? "English" : "Български");
+                rb.CheckedChanged += (s, e) =>
+                {
+                    if (!rb.Checked || Lang.Code == code) return;
+                    Lang.Save(code);
+                    if (AnyBusy)
+                    {
+                        // Never restart in the middle of installing / copying – just use the language next time.
+                        MessageBox.Show(p.FindForm(), code == "bg" ? "Езикът е запазен и ще се използва при следващото стартиране на OrclWAMP."
+                                                                   : "The language is saved and will be used the next time OrclWAMP starts.",
+                                        Program.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+                    var msg = code == "bg" ? "Езикът ще се смени след рестартиране на OrclWAMP. Рестартиране сега?"
+                                           : "The language changes after OrclWAMP restarts. Restart now?";
+                    if (MessageBox.Show(p.FindForm(), msg, Program.AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                        RestartApp();
+                };
+                p.Controls.Add(rb);
+            }
+            return p;
         }
 
         /// <summary>Three-segment Light / Dark / System switch; all open windows stay in sync.</summary>
@@ -231,9 +325,9 @@ namespace OrclWAMP
             var buttons = new System.Collections.Generic.List<RadioButton>();
             foreach (var (mode, text, tip) in new[]
             {
-                (ThemeMode.Light, "☀  Light", "Light theme"),
-                (ThemeMode.Dark, "☾  Dark", "Dark theme"),
-                (ThemeMode.System, "◐  System", "Follow the Windows setting")
+                (ThemeMode.Light, "☀  " + T("Light"), T("Light theme")),
+                (ThemeMode.Dark, "☾  " + T("Dark"), T("Dark theme")),
+                (ThemeMode.System, "◐  " + T("System"), T("Follow the Windows setting"))
             })
             {
                 var rb = new RadioButton
@@ -290,5 +384,13 @@ namespace OrclWAMP
         {
             for (int i = 0; i < widths.Length && i < lv.Columns.Count; i++) lv.Columns[i].Width = S(widths[i]);
         }
+    }
+
+    /// <summary>Runs an action once when disposed.</summary>
+    internal sealed class Disposer : IDisposable
+    {
+        Action _a;
+        public Disposer(Action a) { _a = a; }
+        public void Dispose() { var a = _a; _a = null; a?.Invoke(); }
     }
 }

@@ -100,7 +100,7 @@ namespace OrclWAMP
                 m = FromWingetExport(Json.Parse<WingetExportFile>(text));
             else
                 m = Json.Parse<Manifest>(text);
-            if (m == null) throw new InvalidDataException("The file is empty or not a valid OrclWAMP package.");
+            if (m == null) throw new InvalidDataException(Lang.T("The file is empty or not a valid OrclWAMP package."));
             m.Packages = m.Packages ?? new List<PackageRef>();
             m.ManualApps = m.ManualApps ?? new List<ManualApp>();
             if (m.TimeoutMinutes <= 0) m.TimeoutMinutes = DefaultTimeout;
@@ -113,7 +113,7 @@ namespace OrclWAMP
                 p.Version = p.Version ?? "";
             }
             var bad = m.Packages.Where(p => !SafeToken.IsMatch(p.Id) || !SafeToken.IsMatch(p.Source)).Select(p => p.Id).ToList();
-            if (bad.Count > 0) throw new InvalidDataException("The file contains invalid package IDs: " + string.Join(", ", bad.Take(5)));
+            if (bad.Count > 0) throw new InvalidDataException(Lang.F("The file contains invalid package IDs: {0}", string.Join(", ", bad.Take(5))));
             m.ManualApps.RemoveAll(a => a == null || string.IsNullOrWhiteSpace(a.Name));
             foreach (var a in m.ManualApps)
             {

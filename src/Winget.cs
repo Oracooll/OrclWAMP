@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using static OrclWAMP.Lang;
 
 namespace OrclWAMP
 {
@@ -84,7 +85,7 @@ namespace OrclWAMP
         public static Task<ProcResult> RunAsync(string args, Action<string> onLine, CancellationToken ct, TimeSpan? timeout)
         {
             var exe = Exe;
-            if (exe == null) return Task.FromResult(new ProcResult { StartFailed = true, Error = "winget was not found on this PC." });
+            if (exe == null) return Task.FromResult(new ProcResult { StartFailed = true, Error = T("winget was not found on this PC.") });
             return Task.Run(() => RunSync(exe, args, onLine, ct, timeout));
         }
 
@@ -180,6 +181,14 @@ namespace OrclWAMP
             return sb.ToString();
         }
 
+        public static string UpgradeArgs(string id, string source)
+        {
+            var sb = new StringBuilder("upgrade --id ").Append(Quote(id)).Append(" --exact");
+            if (!string.IsNullOrWhiteSpace(source)) sb.Append(" --source ").Append(Quote(source));
+            sb.Append(" --silent --accept-package-agreements --accept-source-agreements").Append(NoInteract);
+            return sb.ToString();
+        }
+
         public static string InstallArgs(string id, string source, string version)
         {
             var sb = new StringBuilder("install --id ").Append(Quote(id)).Append(" --exact");
@@ -243,42 +252,42 @@ namespace OrclWAMP
 
         public static string Describe(ProcResult r)
         {
-            if (r.Cancelled) return "Cancelled";
-            if (r.TimedOut) return "Timed out";
-            if (r.StartFailed) return "Could not start winget: " + r.Error;
+            if (r.Cancelled) return T("Cancelled");
+            if (r.TimedOut) return T("Timed out");
+            if (r.StartFailed) return F("Could not start winget: {0}", r.Error);
             uint c = unchecked((uint)r.ExitCode);
             switch (c)
             {
-                case 0: return "Installed";
-                case 0x8A15002B: case 0x8A150061: case 0x8A15010D: return "Already installed";
-                case 0x8A15010E: return "A newer version is already installed";
-                case 0x8A150109: case 3010: return "Installed – restart required";
-                case 0x8A15010B: case 1641: return "Installed – restart started by installer";
-                case 0x8A15010A: return "Failed – restart the PC, then click \"Retry failed\"";
-                case 0x8A150014: return "Package not found in source";
-                case 0x8A150016: return "More than one package matched";
-                case 0x8A150010: return "No installer for this system (architecture / OS)";
-                case 0x8A150008: return "Failed – download failed";
-                case 0x8A150011: return "Failed – installer hash mismatch (package being updated, try later)";
-                case 0x8A15001B: case 0x8A15001C: return "Microsoft Store is blocked by policy";
-                case 0x8A15001E: return "Failed – Microsoft Store install failed";
-                case 0x8A150045: return "Failed – could not open the package source";
-                case 0x8A150046: return "Failed – source agreements not accepted";
-                case 0x8A150056: return "Can't install as administrator – run OrclWAMP without admin rights and retry";
-                case 0x8A15007D: return "Per-user app – run OrclWAMP without admin rights and retry";
-                case 0x8A150110: return "Failed – a dependency could not be installed";
-                case 0x8A150111: return "Failed – app is in use by another application";
-                case 1618: return "Failed – another installation is in progress";
-                case 0x8A150101: return "Failed – application is in use";
-                case 0x8A150102: return "Failed – another installation is in progress";
-                case 0x8A150103: return "Failed – a file is in use";
-                case 0x8A150104: return "Failed – missing dependency";
-                case 0x8A150105: return "Failed – disk full";
-                case 0x8A150106: return "Failed – not enough memory";
-                case 0x8A150107: return "Failed – no network connection";
-                case 0x8A15010C: return "Cancelled by user (installer)";
-                case 0x8A15010F: return "Blocked by policy";
-                default: return "Failed (exit code 0x" + c.ToString("X8") + ")";
+                case 0: return T("Installed");
+                case 0x8A15002B: case 0x8A150061: case 0x8A15010D: return T("Already installed");
+                case 0x8A15010E: return T("A newer version is already installed");
+                case 0x8A150109: case 3010: return T("Installed – restart required");
+                case 0x8A15010B: case 1641: return T("Installed – restart started by installer");
+                case 0x8A15010A: return T("Failed – restart the PC, then click \"Retry failed\"");
+                case 0x8A150014: return T("Package not found in source");
+                case 0x8A150016: return T("More than one package matched");
+                case 0x8A150010: return T("No installer for this system (architecture / OS)");
+                case 0x8A150008: return T("Failed – download failed");
+                case 0x8A150011: return T("Failed – installer hash mismatch (package being updated, try later)");
+                case 0x8A15001B: case 0x8A15001C: return T("Microsoft Store is blocked by policy");
+                case 0x8A15001E: return T("Failed – Microsoft Store install failed");
+                case 0x8A150045: return T("Failed – could not open the package source");
+                case 0x8A150046: return T("Failed – source agreements not accepted");
+                case 0x8A150056: return T("Can't install as administrator – run OrclWAMP without admin rights and retry");
+                case 0x8A15007D: return T("Per-user app – run OrclWAMP without admin rights and retry");
+                case 0x8A150110: return T("Failed – a dependency could not be installed");
+                case 0x8A150111: return T("Failed – app is in use by another application");
+                case 1618: return T("Failed – another installation is in progress");
+                case 0x8A150101: return T("Failed – application is in use");
+                case 0x8A150102: return T("Failed – another installation is in progress");
+                case 0x8A150103: return T("Failed – a file is in use");
+                case 0x8A150104: return T("Failed – missing dependency");
+                case 0x8A150105: return T("Failed – disk full");
+                case 0x8A150106: return T("Failed – not enough memory");
+                case 0x8A150107: return T("Failed – no network connection");
+                case 0x8A15010C: return T("Cancelled by user (installer)");
+                case 0x8A15010F: return T("Blocked by policy");
+                default: return F("Failed (exit code 0x{0})", c.ToString("X8"));
             }
         }
 
@@ -304,7 +313,7 @@ namespace OrclWAMP
     {
         internal sealed class Row
         {
-            public string Name = "", Id = "", Version = "", Source = "";
+            public string Name = "", Id = "", Version = "", Source = "", Available = "";
         }
 
         public static List<Row> Parse(string output)
@@ -338,6 +347,7 @@ namespace OrclWAMP
                     cols.Add(Slice(line, starts[c], c + 1 < starts.Count ? starts[c + 1] : -1));
 
                 var row = new Row { Name = cols[0], Id = cols[1], Version = cols[2] };
+                if (starts.Count >= 5) row.Available = cols[3]; // winget list / upgrade: Name Id Version Available Source
                 // Source names never contain spaces or colons; the "Match" column of a single-source
                 // search ("Tag: firefox") does, so it is not mistaken for a source.
                 if (hasSource)

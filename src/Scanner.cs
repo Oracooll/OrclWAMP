@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using static OrclWAMP.Lang;
 
 namespace OrclWAMP
 {
@@ -46,19 +47,26 @@ namespace OrclWAMP
 
         public static async Task<List<AppEntry>> ScanAsync(Action<string> status, CancellationToken ct)
         {
-            status?.Invoke("Reading installed apps (winget list)…");
+            status?.Invoke(T("Reading installed apps (winget list)…"));
             var list = await Winget.RunAsync("list --accept-source-agreements" + Winget.NoInteract, null, ct, TimeSpan.FromMinutes(10));
             ct.ThrowIfCancellationRequested();
             if (list.StartFailed) throw new InvalidOperationException(list.Error);
             var rows = TableParser.Parse(list.Output);
             if (rows.Count == 0)
-                throw new InvalidOperationException("winget did not return a list of installed apps.\r\n\r\n" + Tail(list.Output, 1500));
+            {
+                // winget can return nothing while another winget call holds its database – try once more.
+                await Task.Delay(3000, ct);
+                list = await Winget.RunAsync("list --accept-source-agreements" + Winget.NoInteract, null, ct, TimeSpan.FromMinutes(10));
+                rows = TableParser.Parse(list.Output);
+            }
+            if (rows.Count == 0)
+                throw new InvalidOperationException(T("winget did not return a list of installed apps.") + "\r\n\r\n" + Tail(list.Output, 1500));
 
-            status?.Invoke("Verifying package IDs (winget export)…");
+            status?.Invoke(T("Verifying package IDs (winget export)…"));
             var exported = await ExportAsync(ct);
             ct.ThrowIfCancellationRequested();
 
-            status?.Invoke("Classifying apps…");
+            status?.Invoke(T("Classifying apps…"));
             var info = await Task.Run(() => ReadUninstallInfo());
             return Build(rows, exported, info);
         }

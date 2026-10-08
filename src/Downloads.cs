@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using static OrclWAMP.Lang;
 
 namespace OrclWAMP
 {
@@ -84,11 +85,11 @@ namespace OrclWAMP
         {
             switch (k)
             {
-                case LinkKind.Direct: return "Direct download";
-                case LinkKind.Custom: return "Your link";
-                case LinkKind.Page: return "Official download page";
-                case LinkKind.WebApp: return "Web app address";
-                default: return "No link";
+                case LinkKind.Direct: return T("Direct download");
+                case LinkKind.Custom: return T("Your link");
+                case LinkKind.Page: return T("Official download page");
+                case LinkKind.WebApp: return T("Web app address");
+                default: return T("No link");
             }
         }
 
@@ -138,7 +139,7 @@ namespace OrclWAMP
             req.Timeout = 30000;
             req.ReadWriteTimeout = 60000;
             using (ct.Register(() => { try { req.Abort(); } catch { } }))
-            using (var resp = (HttpWebResponse)await WithStallTimeout(req, req.GetResponseAsync(), 30, ct))
+            using (var resp = (HttpWebResponse)await WithStallTimeout(req, Task.Run(() => req.GetResponseAsync()), 30, ct))
             {
                 var type = (resp.ContentType ?? "").ToLowerInvariant();
                 if (type.StartsWith("text/html") || type.StartsWith("application/xhtml")) return null;
@@ -163,7 +164,7 @@ namespace OrclWAMP
                             if (pct != lastPct) { lastPct = pct; progress?.Invoke(total > 0 ? pct + " %" : (done / 1048576.0).ToString("0.0") + " MB"); }
                         }
                     }
-                    if (total > 0 && done < total) throw new IOException("The download was incomplete.");
+                    if (total > 0 && done < total) throw new IOException(T("The download was incomplete."));
                     File.Move(part, final);
                     return final;
                 }
@@ -212,7 +213,7 @@ namespace OrclWAMP
             {
                 try { req.Abort(); } catch { }
                 ct.ThrowIfCancellationRequested();
-                throw new IOException("The server stopped responding.");
+                throw new IOException(Lang.T("The server stopped responding."));
             }
             return await work;
         }

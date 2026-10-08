@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using static OrclWAMP.Lang;
 
 namespace OrclWAMP
 {
@@ -17,15 +18,103 @@ namespace OrclWAMP
         static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         static readonly Encoding Utf8Bom = new UTF8Encoding(true);
 
-        public static void Write(string dir, Manifest m, string exePath, ICollection<string> settingsIds = null, Action<string> log = null)
+        /// <summary>What else goes into the package besides the app list.</summary>
+        internal sealed class Options
         {
+            public ICollection<string> SettingsIds;
+            public ICollection<string> AppConfigIds;
+            public IList<FolderData> Folders;
+            public string Password;                       // protects Wi-Fi passwords / SSH keys
+            public Action<string> Log;
+            public Action<long, long, string> FileProgress;
+            public System.Threading.CancellationToken Cancel;
+        }
+
+        public static void Write(string dir, Manifest m, string exePath, Options opt = null)
+        {
+            opt = opt ?? new Options();
+            var log = opt.Log;
             Directory.CreateDirectory(dir);
 
-            // Windows settings (optional): always start from a clean folder so old captures don't linger.
-            var settingsDir = Path.Combine(dir, WinSettings.FolderName);
-            if (Directory.Exists(settingsDir)) Directory.Delete(settingsDir, true);
-            if (settingsIds != null && settingsIds.Count > 0) WinSettings.Capture(settingsIds, settingsDir, log);
+            // A folder to copy must not lie inside this package folder (it would be deleted below before being copied).
+            var pkgFull = Path.GetFullPath(dir).TrimEnd('\\') + "\\";
+            var nested = opt.Folders?.FirstOrDefault(f => (Path.GetFullPath(f.SourcePath).TrimEnd('\\') + "\\").StartsWith(pkgFull, StringComparison.OrdinalIgnoreCase));
+            if (nested != null) throw new IOException(Lang.F("\"{0}\" is inside the package folder. Choose another folder to copy, or save the package somewhere else.", nested.DisplayName));
 
+            // Until the very end there is no package file, so a cancelled/failed rewrite never looks like a valid package.
+            var manifestFile = Path.Combine(dir, Program.ManifestFileName);
+            if (File.Exists(manifestFile)) File.Delete(manifestFile);
+
+            // Optional parts: always start from clean folders so old captures don't linger.
+            foreach (var sub in new[] { WinSettings.FolderName, AppConfigs.FolderName, PersonalFiles.FolderName })
+            {
+                var p = Path.Combine(dir, sub);
+                if (Directory.Exists(p)) Directory.Delete(p, true);
+            }
+            var secretsFile = Path.Combine(dir, Secrets.FileName);
+            if (File.Exists(secretsFile)) File.Delete(secretsFile);
+            bool protect = !string.IsNullOrEmpty(opt.Password);
+
+            // Sensitive items (Wi-Fi passwords, SSH keys) only ever travel encrypted: without a password they are left out,
+            // with a password they are captured into a private local temp folder and encrypted straight into the container,
+            // so they are never written readable onto the USB stick.
+            var settingsIds = (opt.SettingsIds ?? new string[0]).ToList();
+            var appIds = (opt.AppConfigIds ?? new string[0]).Where(id => AppConfigs.Find(id) != null).ToList();
+            var sensitiveSettings = settingsIds.Where(id => WinSettings.Find(id)?.Sensitive == true).ToList();
+            var sensitiveApps = appIds.Where(id => AppConfigs.Find(id).Sensitive).ToList();
+            settingsIds = settingsIds.Except(sensitiveSettings).ToList();
+            appIds = appIds.Except(sensitiveApps).ToList();
+            if (!protect && (sensitiveSettings.Count > 0 || sensitiveApps.Count > 0))
+                log?.Invoke(Lang.T("Wi-Fi passwords and SSH keys were left out – they are only included in a password-protected package."));
+
+            var settingsDir = Path.Combine(dir, WinSettings.FolderName);
+            var appDir = Path.Combine(dir, AppConfigs.FolderName);
+            if (settingsIds.Count > 0) WinSettings.Capture(settingsIds, settingsDir, log);
+            opt.Cancel.ThrowIfCancellationRequested();
+            if (appIds.Count > 0) AppConfigs.Capture(appIds, appDir, log);
+            opt.Cancel.ThrowIfCancellationRequested();
+
+            if (protect && (sensitiveSettings.Count > 0 || sensitiveApps.Count > 0))
+            {
+                var tmp = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OrclWAMP", "tmp", Guid.NewGuid().ToString("N"));
+                try
+                {
+                    if (sensitiveSettings.Count > 0)
+                    {
+                        var sp = WinSettings.Capture(sensitiveSettings, Path.Combine(tmp, WinSettings.FolderName), log);
+                        WinSettings.Merge(settingsDir, sp);
+                    }
+                    if (sensitiveApps.Count > 0)
+                    {
+                        var ap = AppConfigs.Capture(sensitiveApps, Path.Combine(tmp, AppConfigs.FolderName), log);
+                        AppConfigs.Merge(appDir, ap);
+                    }
+                    // Container entry names are package-relative ("Settings/wifi/x.xml", "AppConfigs/ssh/0/id_ed25519").
+                    var items = Directory.Exists(tmp)
+                        ? Directory.GetFiles(tmp, "*", SearchOption.AllDirectories)
+                            // the two index files were merged into the package already – everything else is secret
+                            .Where(f => !string.Equals(f, Path.Combine(tmp, WinSettings.FolderName, WinSettings.FileName), StringComparison.OrdinalIgnoreCase) &&
+                                        !string.Equals(f, Path.Combine(tmp, AppConfigs.FolderName, AppConfigs.FileName), StringComparison.OrdinalIgnoreCase))
+                            .Select(f => (f.Substring(tmp.Length + 1).Replace('\\', '/'), File.ReadAllBytes(f)))
+                            .ToList()
+                        : new List<(string, byte[])>();
+                    if (items.Count > 0) Secrets.Write(secretsFile, opt.Password, items);
+                    log?.Invoke(Lang.F("{0} sensitive file(s) encrypted with the package password.", items.Count));
+                }
+                finally
+                {
+                    try { if (Directory.Exists(tmp)) Directory.Delete(tmp, true); } catch { }
+                }
+            }
+
+            if (opt.Folders != null && opt.Folders.Count > 0)
+            {
+                var filesDir = Path.Combine(dir, PersonalFiles.FolderName);
+                Directory.CreateDirectory(filesDir);
+                PersonalFiles.Capture(opt.Folders, filesDir, opt.FileProgress, log, opt.Cancel);
+            }
+
+            opt.Cancel.ThrowIfCancellationRequested();
             var destExe = Path.Combine(dir, ExeName);
             if (!string.Equals(Path.GetFullPath(exePath), Path.GetFullPath(destExe), StringComparison.OrdinalIgnoreCase))
                 File.Copy(exePath, destExe, true);
@@ -119,19 +208,19 @@ namespace OrclWAMP
         {
             string H(string s) => WebUtility.HtmlEncode(s ?? "");
             var sb = new StringBuilder();
-            sb.Append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
-            sb.Append("<title>OrclWAMP – Manual install list</title><style>");
+            sb.Append("<!doctype html><html lang=\"").Append(IsBg ? "bg" : "en").Append("\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+            sb.Append("<title>OrclWAMP – ").Append(H(T("Manual install list"))).Append("</title><style>");
             sb.Append(":root{color-scheme:light dark}body{font-family:Segoe UI,Arial,sans-serif;margin:24px;max-width:1000px}");
             sb.Append("h1{font-size:22px}h2{font-size:17px;margin-top:28px}table{border-collapse:collapse;width:100%}");
             sb.Append("th,td{text-align:left;padding:6px 10px;border-bottom:1px solid #8884}th{background:#8882}");
             sb.Append("td.v{white-space:nowrap;color:#888}.muted{color:#888}input{transform:scale(1.2)}</style></head><body>");
-            sb.Append("<h1>OrclWAMP – apps to install manually</h1>");
-            sb.Append("<p class=\"muted\">Source PC: ").Append(H(m.SourceComputer)).Append(" · created ").Append(H(FormatDate(m.CreatedUtc))).Append("</p>");
-            sb.Append("<p>These apps were installed on the old PC but winget has no package for them, so they have to be installed by hand. Tick them off as you go.</p>");
-            if (m.ManualApps.Count == 0) sb.Append("<p><b>Nothing to do – every selected app can be installed by winget.</b></p>");
+            sb.Append("<h1>OrclWAMP – ").Append(H(T("apps to install manually"))).Append("</h1>");
+            sb.Append("<p class=\"muted\">").Append(H(F("Source PC: {0} · created {1}", m.SourceComputer, FormatDate(m.CreatedUtc)))).Append("</p>");
+            sb.Append("<p>").Append(H(T("These apps were installed on the old PC but winget has no package for them, so they have to be installed by hand. Tick them off as you go."))).Append("</p>");
+            if (m.ManualApps.Count == 0) sb.Append("<p><b>").Append(H(T("Nothing to do – every selected app can be installed by winget."))).Append("</b></p>");
             else
             {
-                sb.Append("<table><tr><th></th><th>App</th><th>Version on old PC</th><th>Download</th><th>Notes</th></tr>");
+                sb.Append("<table><tr><th></th><th>").Append(H(T("App"))).Append("</th><th>").Append(H(T("Version on old PC"))).Append("</th><th>").Append(H(T("Download"))).Append("</th><th>").Append(H(T("Notes"))).Append("</th></tr>");
                 foreach (var a in m.ManualApps.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase))
                 {
                     // Only links OrclWAMP is sure about; otherwise no link is shown.
@@ -139,14 +228,14 @@ namespace OrclWAMP
                     sb.Append("<tr><td><input type=\"checkbox\"></td><td>").Append(H(a.Name));
                     if (a.Publisher.Length > 0) sb.Append("<br><span class=\"muted\">").Append(H(a.Publisher)).Append("</span>");
                     sb.Append("</td><td class=\"v\">").Append(H(a.Version)).Append("</td><td>");
-                    if (kind == LinkKind.None) sb.Append("<span class=\"muted\">no known link</span>");
+                    if (kind == LinkKind.None) sb.Append("<span class=\"muted\">").Append(H(T("no known link"))).Append("</span>");
                     else sb.Append("<a href=\"").Append(H(url)).Append("\" target=\"_blank\" rel=\"noopener\">").Append(H(Downloads.KindText(kind))).Append("</a>");
-                    sb.Append("</td><td class=\"muted\">").Append(H(note)).Append("</td></tr>");
+                    sb.Append("</td><td class=\"muted\">").Append(H(Lang.Note(note))).Append("</td></tr>");
                 }
                 sb.Append("</table>");
-                sb.Append("<p class=\"muted\">Tip: OrclWAMP.exe (button \"Manual apps &amp; downloads\") can download these one by one or all at once.</p>");
+                sb.Append("<p class=\"muted\">").Append(H(T("Tip: OrclWAMP.exe (button \"Manual apps & downloads\") can download these one by one or all at once."))).Append("</p>");
             }
-            sb.Append("<h2>Installed automatically by OrclWAMP (").Append(m.Packages.Count).Append(")</h2><table><tr><th>App</th><th>Package ID</th><th>Source</th></tr>");
+            sb.Append("<h2>").Append(H(F("Installed automatically by OrclWAMP ({0})", m.Packages.Count))).Append("</h2><table><tr><th>").Append(H(T("App"))).Append("</th><th>").Append(H(T("Package ID"))).Append("</th><th>").Append(H(T("Source"))).Append("</th></tr>");
             foreach (var p in m.Packages.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase))
                 sb.Append("<tr><td>").Append(H(p.Name)).Append("</td><td class=\"v\">").Append(H(p.Id)).Append("</td><td class=\"v\">").Append(H(p.Source)).Append("</td></tr>");
             sb.Append("</table></body></html>");
@@ -158,28 +247,28 @@ namespace OrclWAMP
             return
 "OrclWAMP - Oracooll Winget App Migration Program\r\n" +
 "=================================================\r\n\r\n" +
-"This folder was created on " + m.SourceComputer + " (" + FormatDate(m.CreatedUtc) + ").\r\n" +
-"It contains " + m.Packages.Count + " apps that winget can install and " + m.ManualApps.Count + " apps to install by hand.\r\n\r\n" +
-"ON THE NEW PC\r\n" +
-"  1. Connect it to the internet.\r\n" +
-"  2. Copy this folder to the new PC (or run it straight from the USB stick).\r\n" +
-"  3. Double-click Install.cmd (or OrclWAMP.exe).\r\n" +
-"  4. Check the list and click \"Start installation\".\r\n" +
-"  5. Click \"Manual apps & downloads\" (or open " + ReportName + ") for the apps that need a manual install.\r\n\r\n" +
-"If Windows SmartScreen warns about the exe: click \"More info\" > \"Run anyway\".\r\n\r\n" +
-"FILES\r\n" +
-"  OrclWAMP.exe              the installer (the same portable tool that made this folder)\r\n" +
-"  " + Program.ManifestFileName + "     the app list - can be opened and edited in OrclWAMP\r\n" +
-"  Install.cmd               starts OrclWAMP in restore mode\r\n" +
-"  winget-packages.json      standard winget file:\r\n" +
+F("This folder was created on {0} ({1}).", m.SourceComputer, FormatDate(m.CreatedUtc)) + "\r\n" +
+F("It contains {0} apps that winget can install and {1} apps to install by hand.", m.Packages.Count, m.ManualApps.Count) + "\r\n\r\n" +
+T("ON THE NEW PC") + "\r\n" +
+"  " + T("1. Connect it to the internet.") + "\r\n" +
+"  " + T("2. Copy this folder to the new PC (or run it straight from the USB stick).") + "\r\n" +
+"  " + T("3. Double-click Install.cmd (or OrclWAMP.exe).") + "\r\n" +
+"  " + T("4. Check the list and click \"Start installation\".") + "\r\n" +
+"  " + F("5. Click \"Manual apps & downloads\" (or open {0}) for the apps that need a manual install.", ReportName) + "\r\n\r\n" +
+T("If Windows SmartScreen warns about the exe: click \"More info\" > \"Run anyway\".") + "\r\n\r\n" +
+T("FILES") + "\r\n" +
+"  OrclWAMP.exe              " + T("the installer (the same portable tool that made this folder)") + "\r\n" +
+"  " + Program.ManifestFileName + "     " + T("the app list - can be opened and edited in OrclWAMP") + "\r\n" +
+"  Install.cmd               " + T("starts OrclWAMP in restore mode") + "\r\n" +
+"  winget-packages.json      " + T("standard winget file:") + "\r\n" +
 "                            winget import -i winget-packages.json --accept-package-agreements --accept-source-agreements --ignore-unavailable\r\n" +
-"  Install-Fallback.ps1      plain PowerShell fallback:  powershell -ExecutionPolicy Bypass -File Install-Fallback.ps1\r\n" +
-"  Settings\\                 Windows settings from the old PC (button \"Windows settings\" applies them, with Undo)\r\n" +
-"  " + ReportName + "  apps winget can't install (download links only where certain)\r\n\r\n" +
-"COMMAND LINE\r\n" +
-"  OrclWAMP.exe /restore [file]   open restore mode\r\n" +
-"  OrclWAMP.exe /unattended       install everything without asking (use with /restore)\r\n\r\n" +
-"Logs from each run are saved in this folder (OrclWAMP-restore-*.log).\r\n";
+"  Install-Fallback.ps1      " + T("plain PowerShell fallback:") + "  powershell -ExecutionPolicy Bypass -File Install-Fallback.ps1\r\n" +
+"  Settings\\                 " + T("Windows settings from the old PC (button \"Windows settings\" applies them, with Undo)") + "\r\n" +
+"  " + ReportName + "  " + T("apps winget can't install (download links only where certain)") + "\r\n\r\n" +
+T("COMMAND LINE") + "\r\n" +
+"  OrclWAMP.exe /restore [file]   " + T("open restore mode") + "\r\n" +
+"  OrclWAMP.exe /unattended       " + T("install everything without asking (use with /restore)") + "\r\n\r\n" +
+T("Logs from each run are saved in this folder (OrclWAMP-restore-*.log).") + "\r\n";
         }
 
         public static string FormatDate(string isoUtc)

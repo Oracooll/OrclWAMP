@@ -47,6 +47,18 @@ Notes from the design passes that shaped OrclWAMP (Oracooll Winget App Migration
 - **Not possible** (Windows protects them or they depend on the hardware): default apps, Start/taskbar pins, display scaling, Night light.
 - A log pane button moves the log between the bottom and the right side.
 
+## Round 6 – "Everything moves" (1.4.001)
+User picks from the suggestion list:
+1. Personal files (known folders + custom; OneDrive-aware; conflict handling; FAT32/free-space checks)
+2. App settings & bookmarks (curated catalog, whitelisted locations, backup/Undo, VS Code extensions)
+3. Password-protected package (AES-256-CBC + HMAC-SHA256, PBKDF2-SHA256 300k iterations) for Wi-Fi and SSH keys
+4. App updates / upgrade mode
+5. Migration report on the new PC
+6. Update check against GitHub releases
+7. Bulgarian interface (EN/BG switch)
+
+Still open: mapped drives & printers, offline installers, network transfer, code signing.
+
 ## Rejected / deferred
 - Offline installers (downloading every installer onto the USB): many installers don't allow redistribution, it needs lots of space, and winget's `download` support is uneven. *Deferred.*
 - Migrating app settings and data: out of scope and risky.

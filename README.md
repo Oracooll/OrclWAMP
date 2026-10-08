@@ -2,7 +2,7 @@
 
 # OrclWAMP – Oracooll Winget App Migration Program
 
-**Version 1.3.002**
+**Version 1.4.001**
 
 Moving to a new PC? OrclWAMP scans your old PC, finds every app that **winget** can install, and writes a migration folder to a USB stick. On the new PC you double-click one file and your apps install themselves.
 
@@ -47,6 +47,16 @@ Your personal Windows settings travel with the apps: touchpad gestures, mouse, k
 
 ![Windows settings](docs/settings.png)
 
+### App updates
+**App updates…** lists the apps on any PC that have a newer version and updates the ticked ones silently, one after another.
+
+![App updates](docs/updates.png)
+
+### Български
+Click **BG** in the header to switch the whole interface to Bulgarian. **EN** switches back.
+
+![Bulgarian interface](docs/bulgarian.png)
+
 ## Features
 
 | | |
@@ -64,6 +74,13 @@ Your personal Windows settings travel with the apps: touchpad gestures, mouse, k
 | Themes | Light / Dark / System toggle in every window. System follows Windows live |
 | **Windows settings migration** | Takes your personal settings along: touchpad gestures, mouse, keyboard layouts & languages, taskbar/Start/Explorer options, colours, wallpaper, regional formats, power timers, user fonts, Wi-Fi (opt-in). Applied with a backup and **Undo**, and only known settings are ever written |
 | Log pane position | One click moves the restore log between the bottom and the right side. Remembered |
+| **Personal files** | Desktop, Documents, Pictures, Music, Videos, Downloads and your own folders. Sizes shown first, OneDrive folders skipped, identical files skipped, conflicts kept as a renamed copy |
+| **App settings & bookmarks** | Edge, Chrome, Brave and Firefox bookmarks, Windows Terminal, VS Code (plus its extensions), Notepad++, Double Commander, Total Commander, PowerShell profiles, Git, SSH keys. Backup and Undo |
+| **Password protection** | Wi-Fi passwords and SSH keys are encrypted in the package with your password (AES-256 + HMAC, PBKDF2-SHA256) |
+| **App updates** | Shows apps with newer versions on any PC and updates the ticked ones (`/upgrade`) |
+| **Migration report** | One page after restoring: apps installed or failed, manual apps, settings, app settings, files copied |
+| Update check | A small link appears in the header when a newer OrclWAMP is available (at most once a day) |
+| **English / Български** | EN / BG language switch in every window |
 | winget check and repair | On the new PC, re-registers App Installer or downloads it from Microsoft if winget is missing |
 | Skips installed apps | Apps already on the new PC are detected and skipped |
 | Robust installs | Silent installs, per-app timeout, keeps going after errors, retries automatically when another install is in progress, **Retry failed**, readable error messages |
@@ -83,6 +100,7 @@ OrclWAMP.exe /restore [file]        Install apps from a migration package
 OrclWAMP.exe /restore /unattended   Install everything without asking
 OrclWAMP.exe /package <folder>      Scan and write a migration package without UI
 OrclWAMP.exe /csv <file>            Scan and save the app list as CSV without UI
+OrclWAMP.exe /upgrade               Show app updates for this PC
 ```
 
 ## What's in the migration folder
@@ -96,6 +114,11 @@ OrclWAMP.exe /csv <file>            Scan and save the app list as CSV without UI
 | `Install-Fallback.ps1` | Plain PowerShell installer, if the exe can't run |
 | `Manual-Install-Report.html` | Apps to install by hand |
 | `README.txt` | Short instructions |
+| `Settings\` | Windows settings (optional) |
+| `AppConfigs\` | App settings & bookmarks (optional) |
+| `Files\` | Personal files (optional) |
+| `secrets.orclwamp` | Encrypted Wi-Fi passwords / SSH keys (only with password protection) |
+| `OrclWAMP-Migration-Report.html` | Written on the new PC after restoring |
 
 ## Building from source
 

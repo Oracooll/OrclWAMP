@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using static OrclWAMP.Lang;
 
 namespace OrclWAMP
 {
@@ -42,14 +43,14 @@ namespace OrclWAMP
         {
             _changed = changed;
             _openChecklist = openChecklist;
-            Ui.Init(this, Program.AppName + " " + Program.VersionText + " – Manual apps & downloads", 1150, 640);
+            Ui.Init(this, Program.AppName + " " + Program.VersionText + " – " + T("Manual apps & downloads"), 1150, 640);
             StartPosition = FormStartPosition.CenterParent;
 
-            _lv.Columns.Add("App");
-            _lv.Columns.Add("Version");
-            _lv.Columns.Add("Publisher");
-            _lv.Columns.Add("Download link");
-            _lv.Columns.Add("Status");
+            _lv.Columns.Add(T("App"));
+            _lv.Columns.Add(T("Version"));
+            _lv.Columns.Add(T("Publisher"));
+            _lv.Columns.Add(T("Download link"));
+            _lv.Columns.Add(T("Status"));
             Ui.AutoSizeColumns(_lv, 280, 110, 170, 170, 360);
             foreach (var a in apps.OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase))
             {
@@ -68,24 +69,23 @@ namespace OrclWAMP
             Controls.Add(_lv);
 
             var bottom = Ui.Flow(DockStyle.Bottom);
-            _dlTicked = Ui.Button("Download ticked", async (s, e) => await DownloadManyAsync(_rows.Where(r => r.Lvi.Checked).ToList()), true);
-            _dlAll = Ui.Button("Download all", async (s, e) => await DownloadManyAsync(_rows.ToList()));
-            _stop = Ui.Button("Stop", (s, e) => _cts?.Cancel());
+            _dlTicked = Ui.Button(T("Download ticked"), async (s, e) => await DownloadManyAsync(_rows.Where(r => r.Lvi.Checked).ToList()), true);
+            _dlAll = Ui.Button(T("Download all"), async (s, e) => await DownloadManyAsync(_rows.ToList()));
+            _stop = Ui.Button(T("Stop"), (s, e) => _cts?.Cancel());
             _stop.Enabled = false;
             bottom.Controls.Add(_dlTicked);
             bottom.Controls.Add(_dlAll);
             bottom.Controls.Add(_stop);
-            bottom.Controls.Add(Ui.Button("Open downloads folder", (s, e) => OpenFolder()));
-            if (openChecklist != null) bottom.Controls.Add(Ui.Button("Printable checklist", (s, e) => _openChecklist()));
+            bottom.Controls.Add(Ui.Button(T("Open downloads folder"), (s, e) => OpenFolder()));
+            if (openChecklist != null) bottom.Controls.Add(Ui.Button(T("Printable checklist"), (s, e) => _openChecklist()));
             bottom.Controls.Add(_status);
             Controls.Add(bottom);
 
             int direct = _rows.Count(r => r.CanDownload), pages = _rows.Count(r => r.HasLink && !r.CanDownload), none = _rows.Count(r => !r.HasLink);
-            var info = Ui.InfoLabel(this,$"{_rows.Count} apps can't be installed by winget.  {direct} can be downloaded directly, {pages} have an official download page, " +
-                       $"{none} have no link OrclWAMP can be sure of.\r\n" +
-                       "Double-click an app to download it (or open its page). Right-click to set your own link. Files are saved to: " + Downloads.DownloadFolder);
+            var info = Ui.InfoLabel(this, F("{0} apps can't be installed by winget.  {1} can be downloaded directly, {2} have an official download page, {3} have no link OrclWAMP can be sure of.", _rows.Count, direct, pages, none) + "\r\n" +
+                       F("Double-click an app to download it (or open its page). Right-click to set your own link. Files are saved to: {0}", Downloads.DownloadFolder));
             Controls.Add(info);
-            Controls.Add(Ui.HeaderBar("Manual apps & downloads"));
+            Controls.Add(Ui.HeaderBar(T("Manual apps & downloads")));
 
             Theme.Attach(this, () => { foreach (var r in _rows) r.Lvi.ForeColor = r.Color(); });
             FormClosing += (s, e) =>
@@ -99,22 +99,22 @@ namespace OrclWAMP
         ContextMenuStrip BuildMenu()
         {
             var cm = new ContextMenuStrip();
-            cm.Items.Add("Download / open link", null, async (s, e) => { foreach (var r in Selected()) await ActivateAsync(r, runIfDownloaded: false); });
-            cm.Items.Add("Run downloaded installer", null, (s, e) => { var r = Selected().FirstOrDefault(x => x.File != null); if (r != null) Run(r); });
-            cm.Items.Add("Show file in folder", null, (s, e) =>
+            cm.Items.Add(T("Download / open link"), null, async (s, e) => { foreach (var r in Selected()) await ActivateAsync(r, runIfDownloaded: false); });
+            cm.Items.Add(T("Run downloaded installer"), null, (s, e) => { var r = Selected().FirstOrDefault(x => x.File != null); if (r != null) Run(r); });
+            cm.Items.Add(T("Show file in folder"), null, (s, e) =>
             {
                 var r = Selected().FirstOrDefault(x => x.File != null && File.Exists(x.File));
                 if (r != null) Process.Start("explorer.exe", "/select,\"" + r.File + "\"")?.Dispose();
             });
             cm.Items.Add(new ToolStripSeparator());
-            cm.Items.Add("Set download link…", null, (s, e) => { var r = Selected().FirstOrDefault(); if (r != null) EditLink(r); });
-            cm.Items.Add("Copy link", null, (s, e) => { var r = Selected().FirstOrDefault(x => x.HasLink); if (r != null) Clipboard.SetText(r.Url); });
-            cm.Items.Add("Open publisher website", null, (s, e) =>
+            cm.Items.Add(T("Set download link…"), null, (s, e) => { var r = Selected().FirstOrDefault(); if (r != null) EditLink(r); });
+            cm.Items.Add(T("Copy link"), null, (s, e) => { var r = Selected().FirstOrDefault(x => x.HasLink); if (r != null) Clipboard.SetText(r.Url); });
+            cm.Items.Add(T("Open publisher website"), null, (s, e) =>
             {
                 var r = Selected().FirstOrDefault(x => Downloads.IsWebUrl(x.App.Homepage));
-                if (r != null) Ui.Open(r.App.Homepage); else Ui.Info(this, "No publisher website is known for this app.");
+                if (r != null) Ui.Open(r.App.Homepage); else Ui.Info(this, T("No publisher website is known for this app."));
             });
-            cm.Items.Add("Search the web for this app", null, (s, e) => { var r = Selected().FirstOrDefault(); if (r != null) Ui.Open(Downloads.SearchUrl(r.App.Name)); });
+            cm.Items.Add(T("Search the web for this app"), null, (s, e) => { var r = Selected().FirstOrDefault(); if (r != null) Ui.Open(Downloads.SearchUrl(r.App.Name)); });
             return cm;
         }
 
@@ -124,9 +124,9 @@ namespace OrclWAMP
         {
             r.Kind = Downloads.Resolve(r.App, out r.Url, out r.Note);
             r.Lvi.SubItems[3].Text = Downloads.KindText(r.Kind);
-            r.Lvi.ToolTipText = r.HasLink ? r.Url : "No download link OrclWAMP can be sure of – right-click > Set download link…";
+            r.Lvi.ToolTipText = r.HasLink ? r.Url : T("No download link OrclWAMP can be sure of – right-click > Set download link…");
             if (r.File == null)
-                SetStatus(r, r.Note.Length > 0 ? r.Note : r.HasLink ? "" : "Install manually (right-click for options)", r.HasLink ? (Func<Color>)(() => Theme.Text) : () => Theme.Muted);
+                SetStatus(r, r.Note.Length > 0 ? Lang.Note(r.Note) : r.HasLink ? "" : T("Install manually (right-click for options)"), r.HasLink ? (Func<Color>)(() => Theme.Text) : () => Theme.Muted);
         }
 
         void SetStatus(Row r, string text, Func<Color> color)
@@ -148,12 +148,13 @@ namespace OrclWAMP
         async Task DownloadManyAsync(List<Row> rows)
         {
             if (_running) return;
-            if (rows.Count == 0) { Ui.Info(this, "No apps are ticked."); return; }
+            if (rows.Count == 0) { Ui.Info(this, T("No apps are ticked.")); return; }
             await RunBatchAsync(rows, askForPages: true);
         }
 
         async Task RunBatchAsync(List<Row> rows, bool askForPages)
         {
+            using var busy = Ui.Busy();
             _running = true;
             _cts = new CancellationTokenSource();
             var ct = _cts.Token;
@@ -166,31 +167,32 @@ namespace OrclWAMP
                 for (int i = 0; i < files.Count && !ct.IsCancellationRequested; i++)
                 {
                     var r = files[i];
-                    _status.Text = $"Downloading {i + 1} of {files.Count}: {r.App.Name}";
+                    _status.Text = F("Downloading {0} of {1}: {2}", i + 1, files.Count, r.App.Name);
                     var res = await DownloadOneAsync(r, ct);
                     if (res == 1) downloaded++; else if (res == 2) opened++; else if (res == 0) failed++;
                 }
 
                 var pages = rows.Where(r => r.HasLink && !r.CanDownload).ToList();
                 if (pages.Count > 0 && !ct.IsCancellationRequested &&
-                    (!askForPages || Ui.Ask(this, $"{pages.Count} app(s) can't be downloaded directly – they have an official download page instead.\r\n\r\nOpen these pages in your browser now?")))
+                    (!askForPages || Ui.Ask(this, F("{0} app(s) can't be downloaded directly – they have an official download page instead.\r\n\r\nOpen these pages in your browser now?", pages.Count))))
                 {
                     foreach (var r in pages)
                     {
                         Ui.Open(r.Url);
-                        SetStatus(r, "Opened " + (r.Kind == LinkKind.WebApp ? "web app – install it from the browser menu" : "download page"), () => Theme.Busy);
+                        SetStatus(r, r.Kind == LinkKind.WebApp ? T("Opened web app – install it from the browser menu") : T("Opened download page"), () => Theme.Busy);
                         opened++;
                         await Task.Delay(400);
                     }
                 }
 
                 int none = rows.Count(r => !r.HasLink);
-                _status.Text = ct.IsCancellationRequested ? "Stopped."
-                    : $"{downloaded} downloaded, {opened} page(s) opened, {failed} failed" + (none > 0 ? $", {none} without a link." : ".");
+                _status.Text = ct.IsCancellationRequested ? T("Stopped.")
+                    : none > 0 ? F("{0} downloaded, {1} page(s) opened, {2} failed, {3} without a link.", downloaded, opened, failed, none)
+                               : F("{0} downloaded, {1} page(s) opened, {2} failed.", downloaded, opened, failed);
                 if (askForPages && !ct.IsCancellationRequested && (downloaded > 0 || none > 0))
                 {
-                    var msg = downloaded > 0 ? $"{downloaded} installer(s) saved to:\r\n{Downloads.DownloadFolder}\r\n\r\nDouble-click an app in the list to run its installer." : "";
-                    if (none > 0) msg += (msg.Length > 0 ? "\r\n\r\n" : "") + $"{none} app(s) have no link OrclWAMP can be sure of. Right-click them to search the web or set your own link.";
+                    var msg = downloaded > 0 ? F("{0} installer(s) saved to:\r\n{1}\r\n\r\nDouble-click an app in the list to run its installer.", downloaded, Downloads.DownloadFolder) : "";
+                    if (none > 0) msg += (msg.Length > 0 ? "\r\n\r\n" : "") + F("{0} app(s) have no link OrclWAMP can be sure of. Right-click them to search the web or set your own link.", none);
                     Ui.Info(this, msg);
                 }
             }
@@ -206,47 +208,47 @@ namespace OrclWAMP
         /// <returns>1 = downloaded, 2 = link was a web page (opened), 0 = failed, -1 = stopped</returns>
         async Task<int> DownloadOneAsync(Row r, CancellationToken ct)
         {
-            SetStatus(r, "Downloading…", () => Theme.Busy);
+            SetStatus(r, T("Downloading…"), () => Theme.Busy);
             try
             {
-                var path = await Downloads.DownloadAsync(r.Url, r.App.Name, p => SetStatus(r, "Downloading… " + p, () => Theme.Busy), ct);
+                var path = await Downloads.DownloadAsync(r.Url, r.App.Name, p => SetStatus(r, T("Downloading…") + " " + p, () => Theme.Busy), ct);
                 if (path == null)
                 {
                     Ui.Open(r.Url);
-                    SetStatus(r, "Link is a web page – opened it in the browser", () => Theme.Warn);
+                    SetStatus(r, T("Link is a web page – opened it in the browser"), () => Theme.Warn);
                     return 2;
                 }
                 r.File = path;
-                SetStatus(r, "Downloaded: " + Path.GetFileName(path) + "  (double-click to install)", () => Theme.Ok);
+                SetStatus(r, F("Downloaded: {0}  (double-click to install)", Path.GetFileName(path)), () => Theme.Ok);
                 return 1;
             }
             catch (Exception) when (ct.IsCancellationRequested)
             {
-                SetStatus(r, "Stopped", () => Theme.Muted);
+                SetStatus(r, T("Stopped"), () => Theme.Muted);
                 return -1;
             }
             catch (Exception ex)
             {
-                SetStatus(r, "Download failed: " + ex.Message, () => Theme.Fail);
+                SetStatus(r, F("Download failed: {0}", ex.Message), () => Theme.Fail);
                 return 0;
             }
         }
 
         void Run(Row r)
         {
-            if (!Ui.Ask(this, $"Run the installer for {r.App.Name}?\r\n\r\n{r.File}")) return;
+            if (!Ui.Ask(this, F("Run the installer for {0}?\r\n\r\n{1}", r.App.Name, r.File))) return;
             try { Process.Start(new ProcessStartInfo(r.File) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(r.File) })?.Dispose(); }
-            catch (Exception ex) { Ui.Warn(this, "Could not start the installer:\r\n" + ex.Message); }
+            catch (Exception ex) { Ui.Warn(this, T("Could not start the installer:") + "\r\n" + ex.Message); }
         }
 
         void EditLink(Row r)
         {
             var current = r.Kind == LinkKind.Custom ? r.Url : "";
-            var url = Prompt("Download link for " + r.App.Name,
-                "Paste a download link (a direct installer link or the official download page).\r\nLeave empty to remove your link.", current);
+            var url = Prompt(F("Download link for {0}", r.App.Name),
+                T("Paste a download link (a direct installer link or the official download page).\r\nLeave empty to remove your link."), current);
             if (url == null) return;
             url = url.Trim();
-            if (url.Length > 0 && !Downloads.IsWebUrl(url)) { Ui.Warn(this, "That isn't a web address (it must start with https:// or http://)."); return; }
+            if (url.Length > 0 && !Downloads.IsWebUrl(url)) { Ui.Warn(this, T("That isn't a web address (it must start with https:// or http://).")); return; }
             r.App.DownloadUrl = url;
             Resolve(r);
             _changed?.Invoke();
@@ -266,8 +268,8 @@ namespace OrclWAMP
                 var lbl = new Label { Text = text, Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 0, 0, Ui.S(6)) };
                 var buttons = Ui.Flow(DockStyle.Bottom);
                 buttons.FlowDirection = FlowDirection.RightToLeft;
-                var cancel = Ui.Button("Cancel", null); cancel.DialogResult = DialogResult.Cancel;
-                var ok = Ui.Button("OK", null, true); ok.DialogResult = DialogResult.OK;
+                var cancel = Ui.Button(T("Cancel"), null); cancel.DialogResult = DialogResult.Cancel;
+                var ok = Ui.Button(T("OK"), null, true); ok.DialogResult = DialogResult.OK;
                 buttons.Controls.Add(cancel);
                 buttons.Controls.Add(ok);
                 var body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Ui.S(12)) };
