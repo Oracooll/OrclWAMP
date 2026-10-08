@@ -125,7 +125,7 @@ OrclWAMP.exe /upgrade               Show app updates for this PC
 You need Windows and the C# compiler from Visual Studio 2019 or later, or the free *Build Tools for Visual Studio*.
 
 ```powershell
-./build.ps1              # -> bin\OrclWAMP.exe
+./build.ps1              # -> bin\OrclWAMP.exe (and ..\OrclWAMP.exe when the repo folder is named OrclWAMP-src)
 ./tools/make-icon.ps1    # regenerate assets\OrclWAMP.ico + logo.png from assets\OrclWAMP.png
 ```
 

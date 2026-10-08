@@ -35,3 +35,10 @@ Write-Host "Compiler: $csc"
     @refs @sources
 if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)" }
 Write-Host "Built $(Join-Path $out 'OrclWAMP.exe')" -ForegroundColor Green
+
+# Local layout: OrclWAMP\OrclWAMP-src\ (this repo) and the ready-to-use exe in OrclWAMP\ above it.
+if (-not $env:GITHUB_ACTIONS -and (Split-Path $root -Leaf) -eq 'OrclWAMP-src') {
+    $release = Join-Path (Split-Path $root -Parent) 'OrclWAMP.exe'
+    Copy-Item (Join-Path $out 'OrclWAMP.exe') $release -Force
+    Write-Host "Copied to $release" -ForegroundColor Green
+}
