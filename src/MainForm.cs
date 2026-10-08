@@ -36,7 +36,7 @@ namespace OrclWAMP
 
         public MainForm()
         {
-            Ui.Init(this, Program.AppName + " " + Program.VersionText + " – Oracooll Winget App Migration Tool", 1220, 780);
+            Ui.Init(this, Program.AppName + " " + Program.VersionText + " – Oracooll Winget App Migration Program", 1220, 780);
             SuspendLayout();
 
             // ---- list ----
@@ -123,7 +123,7 @@ namespace OrclWAMP
             actions.Controls.Add(_manualBtn);
             Controls.Add(actions);
 
-            var header = Ui.HeaderBar("Winget App Migration Tool");
+            var header = Ui.HeaderBar("Winget App Migration Program");
             header.Padding = new Padding(Ui.S(8), Ui.S(6), Ui.S(8), 0);
             Controls.Add(header);
 
@@ -174,7 +174,7 @@ namespace OrclWAMP
             help.DropDownItems.Add(new ToolStripMenuItem("Command-line options", null, (s, e) => Ui.Info(this, Options.HelpText)));
             help.DropDownItems.Add(new ToolStripMenuItem("Project page on &GitHub", null, (s, e) => Ui.Open(Program.RepoUrl)));
             help.DropDownItems.Add(new ToolStripMenuItem("&About", null, (s, e) => Ui.Info(this,
-                Program.AppName + " " + Program.VersionText + "\r\nOracooll Winget App Migration Tool\r\n\r\n" + Program.RepoUrl + "\r\nMIT License")));
+                Program.AppName + " " + Program.VersionText + "\r\nOracooll Winget App Migration Program\r\n\r\n" + Program.RepoUrl + "\r\nMIT License")));
 
             ms.Items.Add(file);
             ms.Items.Add(tools);

@@ -1,8 +1,8 @@
 <img src="assets/logo.png" width="64" align="left" alt="OrclWAMP logo">
 
-# OrclWAMP – Oracooll Winget App Migration Tool
+# OrclWAMP – Oracooll Winget App Migration Program
 
-**Version 1.3.001**
+**Version 1.3.002**
 
 Moving to a new PC? OrclWAMP scans your old PC, finds every app that **winget** can install, and writes a migration folder to a USB stick. On the new PC you double-click one file and your apps install themselves.
 

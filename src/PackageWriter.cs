@@ -156,8 +156,8 @@ namespace OrclWAMP
         static string Readme(Manifest m)
         {
             return
-"OrclWAMP - Oracooll Winget App Migration Tool\r\n" +
-"==============================================\r\n\r\n" +
+"OrclWAMP - Oracooll Winget App Migration Program\r\n" +
+"=================================================\r\n\r\n" +
 "This folder was created on " + m.SourceComputer + " (" + FormatDate(m.CreatedUtc) + ").\r\n" +
 "It contains " + m.Packages.Count + " apps that winget can install and " + m.ManualApps.Count + " apps to install by hand.\r\n\r\n" +
 "ON THE NEW PC\r\n" +

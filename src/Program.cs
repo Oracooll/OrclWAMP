@@ -7,13 +7,13 @@ using System.Threading;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("OrclWAMP")]
-[assembly: AssemblyDescription("Oracooll Winget App Migration Tool")]
+[assembly: AssemblyDescription("Oracooll Winget App Migration Program")]
 [assembly: AssemblyCompany("Oracooll")]
-[assembly: AssemblyProduct("OrclWAMP - Oracooll Winget App Migration Tool")]
+[assembly: AssemblyProduct("OrclWAMP - Oracooll Winget App Migration Program")]
 [assembly: AssemblyCopyright("Copyright © Oracooll 2026 - MIT License")]
-[assembly: AssemblyVersion("1.3.1.0")]
-[assembly: AssemblyFileVersion("1.3.1.0")]
-[assembly: AssemblyInformationalVersion("1.3.001")]
+[assembly: AssemblyVersion("1.3.2.0")]
+[assembly: AssemblyFileVersion("1.3.2.0")]
+[assembly: AssemblyInformationalVersion("1.3.002")]
 [assembly: ComVisible(false)]
 
 namespace OrclWAMP
@@ -52,7 +52,7 @@ namespace OrclWAMP
         }
 
         public const string HelpText =
-            "OrclWAMP - Oracooll Winget App Migration Tool\r\n\r\n" +
+            "OrclWAMP - Oracooll Winget App Migration Program\r\n\r\n" +
             "OrclWAMP.exe                       Scan this PC (or restore, if a package file is next to the exe)\r\n" +
             "OrclWAMP.exe /scan                 Always open the scanner\r\n" +
             "OrclWAMP.exe /restore [file]       Install apps from a migration package\r\n" +
@@ -68,7 +68,7 @@ namespace OrclWAMP
         public const string RepoUrl = "https://github.com/Oracooll/OrclWAMP";
 
         public static string AppDir => Path.GetDirectoryName(Application.ExecutablePath);
-        public const string VersionText = "1.3.001";
+        public const string VersionText = "1.3.002";
 
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
 

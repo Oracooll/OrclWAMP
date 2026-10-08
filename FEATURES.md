@@ -1,6 +1,6 @@
 # OrclWAMP – Feature Planning
 
-Notes from the design passes that shaped OrclWAMP (Oracooll Winget App Migration Tool).
+Notes from the design passes that shaped OrclWAMP (Oracooll Winget App Migration Program).
 
 ## Round 1 – Core idea (the minimum that works)
 1. Scan the old PC for installed apps.

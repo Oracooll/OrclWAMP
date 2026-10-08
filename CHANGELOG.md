@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.002
+- Long name changed to **Oracooll Winget App Migration Program** so it matches the OrclWAMP acronym. This covers the window titles, header, About box, exe properties, README and package README.
+
 ## 1.3.001
 - **Windows settings migration**: take personal Windows settings to the new PC along with the apps:
   - **Touchpad & gestures**: taps, scroll direction, three- and four-finger swipes and taps, sensitivity

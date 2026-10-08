@@ -148,7 +148,7 @@ namespace OrclWAMP
             catch { return false; }
         }
 
-        /// <summary>The "OrclWAMP 1.3.001 – subtitle" header shown at the top-left of every window.</summary>
+        /// <summary>The "OrclWAMP 1.3.002 – subtitle" header shown at the top-left of every window.</summary>
         public static Control AppHeader(string subtitle)
         {
             var p = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = new Padding(0), Padding = new Padding(0) };
