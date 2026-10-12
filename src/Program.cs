@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -12,9 +12,9 @@ using static OrclWAMP.Lang;
 [assembly: AssemblyCompany("Oracooll")]
 [assembly: AssemblyProduct("OrclWAMP - Oracooll Winget App Migration Program")]
 [assembly: AssemblyCopyright("Copyright © Oracooll 2026 - MIT License")]
-[assembly: AssemblyVersion("1.4.1.0")]
-[assembly: AssemblyFileVersion("1.4.1.0")]
-[assembly: AssemblyInformationalVersion("1.4.001")]
+[assembly: AssemblyVersion("1.4.2.0")]
+[assembly: AssemblyFileVersion("1.4.2.0")]
+[assembly: AssemblyInformationalVersion("1.4.002")]
 [assembly: ComVisible(false)]
 // Opts into .NET 4.8 behaviour (e.g. long path support when copying personal files).
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8", FrameworkDisplayName = ".NET Framework 4.8")]
@@ -63,7 +63,8 @@ namespace OrclWAMP
             "OrclWAMP.exe /restore /unattended  " + T("Install everything without asking") + "\r\n" +
             "OrclWAMP.exe /package <folder>     " + T("Scan and write a migration package without UI") + "\r\n" +
             "OrclWAMP.exe /csv <file>           " + T("Scan and save the app list as CSV without UI") + "\r\n" +
-            "OrclWAMP.exe /upgrade              " + T("Show app updates for this PC") + "\r\n";
+            "OrclWAMP.exe /upgrade              " + T("Show app updates for this PC") + "\r\n" +
+            "OrclWAMP.exe /upgrade /unattended  " + T("Update apps without asking (tray icon, log in %LOCALAPPDATA%\\OrclWAMP\\logs)") + "\r\n";
     }
 
     internal static class Program
@@ -73,7 +74,7 @@ namespace OrclWAMP
         public const string RepoUrl = "https://github.com/Oracooll/OrclWAMP";
 
         public static string AppDir => Path.GetDirectoryName(Application.ExecutablePath);
-        public const string VersionText = "1.4.001";
+        public const string VersionText = "1.4.002";
 
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
 
@@ -94,6 +95,7 @@ namespace OrclWAMP
             if (o.Help) { MessageBox.Show(Options.HelpText, AppName, MessageBoxButtons.OK, MessageBoxIcon.Information); return 0; }
 
             if (o.CsvPath != null || o.PackageDir != null) return Headless(o);
+            if (o.Upgrade && o.Unattended) { _quiet = true; return AppUpdater.RunUnattended(); }
             if (o.Upgrade) { Application.Run(new UpgradeForm()); return 0; }
 
             string manifest = o.ManifestPath;
@@ -169,9 +171,16 @@ namespace OrclWAMP
         }
 
         static int _showingError;
+        static bool _quiet; // unattended updates: nobody is waiting for a message box
         static void ShowError(Exception ex)
         {
-            if (ex == null || Interlocked.Exchange(ref _showingError, 1) == 1) return;
+            if (ex == null) return;
+            if (_quiet)
+            {
+                try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "OrclWAMP-error.log"), DateTime.Now + "  " + ex + "\r\n"); } catch { }
+                return;
+            }
+            if (Interlocked.Exchange(ref _showingError, 1) == 1) return;
             try { MessageBox.Show(T("Unexpected error:") + "\r\n\r\n" + ex.Message + "\r\n\r\n" + ex.GetType().Name, AppName, MessageBoxButtons.OK, MessageBoxIcon.Error); }
             finally { _showingError = 0; }
         }

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.002
+- **Unattended app updates**: `OrclWAMP.exe /upgrade /unattended` updates every app that has a newer winget version and isn't left out, without asking. When there is something to update it shows a tray icon (right-click it to open the log or stop after the current app) and a summary when it's done and writes a log to `%LOCALAPPDATA%\OrclWAMP\logs`.
+- **Weekly schedule**: App updates → **Weekly schedule…** creates a Windows Task Scheduler task that runs the unattended update once a week on the day and time you choose.
+  - It runs only while you are signed in, and catches up at the next chance if the PC was off or asleep.
+  - It always runs with your normal rights, never silently as administrator, so no other program can use it to get admin rights. Apps that need admin rights to update may show a UAC prompt.
+  - If OrclWAMP runs from a USB stick or network drive, it offers to copy itself to `%LOCALAPPDATA%\OrclWAMP` first.
+  - Shows the last automatic run and opens the log folder. **Run now** starts it straight away.
+- **Choose what updates automatically**: right-click an app in App updates → **Leave out of weekly updates**. Runtimes (VC++, .NET…) are left out unless you tick **Also update runtimes**. A new **Weekly update** column shows what will happen to each app.
+- The App updates window and a scheduled run never update at the same time, and a busy installer is retried once after a minute.
+- App updates now report an error instead of "Everything is up to date" when winget can't check.
+
 ## 1.4.001
 - **Personal files**: copy Desktop, Documents, Pictures, Music, Videos, Downloads and your own folders into the package and back onto the new PC.
   - Shows sizes first.

@@ -25,7 +25,10 @@ namespace OrclWAMP
         readonly TextBox _log = new TextBox();
         readonly ProgressBar _bar = new ProgressBar { Dock = DockStyle.Bottom };
         readonly Label _status = Ui.Label("");
-        readonly Button _refreshBtn, _updateBtn, _stopBtn;
+        readonly Label _scheduleLbl = Ui.Label("");
+        readonly Button _refreshBtn, _updateBtn, _stopBtn, _scheduleBtn;
+        AppUpdater.AutoRules _rules = new AppUpdater.AutoRules();
+        bool _rulesUnknown; // settings.ini could not be read: tick nothing by default
         CancellationTokenSource _cts;
         bool _running, _updating; // _updating: ticks are locked while installers run
 
@@ -37,12 +40,14 @@ namespace OrclWAMP
             _lv.Columns.Add(T("Installed"));
             _lv.Columns.Add(T("Available"));
             _lv.Columns.Add(T("Source"));
+            _lv.Columns.Add(T("Weekly update"));
             _lv.Columns.Add(T("Status"));
-            Ui.AutoSizeColumns(_lv, 260, 260, 110, 110, 70, 260);
+            Ui.AutoSizeColumns(_lv, 240, 240, 100, 100, 60, 130, 240);
             _lv.ItemCheck += (s, e) => { if (_updating) e.NewValue = e.CurrentValue; };
 
             var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal };
             split.Panel1.Controls.Add(_lv);
+            _lv.ContextMenuStrip = BuildMenu();
             _log.Multiline = true; _log.ReadOnly = true; _log.ScrollBars = ScrollBars.Both; _log.WordWrap = false;
             _log.Dock = DockStyle.Fill; _log.Font = new Font("Consolas", 9F);
             split.Panel2.Controls.Add(_log);
@@ -61,13 +66,18 @@ namespace OrclWAMP
             bottom.Controls.Add(Ui.LogPaneButton(split));
             bottom.Controls.Add(_status);
             Controls.Add(bottom);
+            var auto = Ui.Flow(DockStyle.Bottom);
+            _scheduleBtn = Ui.Button(T("Weekly schedule…"), (s, e) => OpenSchedule());
+            auto.Controls.Add(_scheduleBtn);
+            auto.Controls.Add(_scheduleLbl);
+            Controls.Add(auto);
             _bar.Height = Ui.S(14);
             Controls.Add(_bar);
             Controls.Add(Ui.InfoLabel(this, T("Apps on this PC that have a newer version in winget. Tick the ones to update – installers run silently, one after another.")));
             Controls.Add(Ui.HeaderBar(T("App updates")));
 
             Theme.Attach(this, () => { foreach (var i in _items) i.Lvi.ForeColor = i.Color(); });
-            Shown += async (s, e) => await LoadAsync();
+            Shown += async (s, e) => { ShowSchedule(); await LoadAsync(); };
             FormClosing += (s, e) =>
             {
                 if (!_updating) { _cts?.Cancel(); return; }   // only the initial check is running – just close
@@ -89,14 +99,17 @@ namespace OrclWAMP
             _items.Clear();
             try
             {
-                var r = await Winget.RunAsync("upgrade --accept-source-agreements" + Winget.NoInteract, null, CancellationToken.None, TimeSpan.FromMinutes(5));
-                foreach (var row in TableParser.Parse(r.Output).Where(x => x.Source.Length > 0 && !x.Id.EndsWith("…")))
+                var rules = AppUpdater.LoadRules();
+                _rulesUnknown = rules == null;
+                if (rules != null) _rules = rules;
+                foreach (var row in await AppUpdater.ListAsync(CancellationToken.None))
                 {
-                    var it = new ListViewItem(row.Name) { Checked = !Scanner.IsRuntime(row.Id) };
+                    var it = new ListViewItem(row.Name) { Checked = !_rulesUnknown && _rules.IsAuto(row.Id) };
                     it.SubItems.Add(row.Id);
                     it.SubItems.Add(row.Version);
                     it.SubItems.Add(row.Available);
                     it.SubItems.Add(row.Source);
+                    it.SubItems.Add(AutoText(row.Id));
                     it.SubItems.Add("");
                     var item = new Item { Row = row, Lvi = it };
                     it.Tag = item;
@@ -105,8 +118,9 @@ namespace OrclWAMP
                 }
                 _status.Text = _items.Count == 0 ? T("Everything is up to date.") : F("{0} update(s) available.", _items.Count);
                 Log(F("{0} update(s) available.", _items.Count));
+                if (_rulesUnknown) Log(T("Your OrclWAMP settings could not be read – nothing is ticked. Click \"Check again\" in a moment."));
             }
-            catch (Exception ex) { _status.Text = ex.Message; }
+            catch (Exception ex) { _status.Text = ex.Message; Log(ex.Message); }
             finally
             {
                 _bar.Style = ProgressBarStyle.Continuous;
@@ -120,6 +134,14 @@ namespace OrclWAMP
             if (_running) return;
             var queue = _items.Where(i => i.Lvi.Checked).ToList();
             if (queue.Count == 0) { Ui.Info(this, T("No apps are ticked.")); return; }
+            var mutex = AppUpdater.TryLock();
+            if (mutex == null) { Ui.Info(this, T("Automatic app updates are running in the background right now. Try again when they have finished.")); return; }
+            try { await UpdateQueueAsync(queue); }
+            finally { AppUpdater.Unlock(mutex); }
+        }
+
+        async Task UpdateQueueAsync(List<Item> queue)
+        {
             using var busy = Ui.Busy();
             _running = _updating = true;
             _cts = new CancellationTokenSource();
@@ -139,14 +161,11 @@ namespace OrclWAMP
                     _status.Text = F("Updating {0} of {1}: {2}", _bar.Value + 1, queue.Count, i.Row.Name);
                     Log("");
                     Log($"{i.Row.Name} ({i.Row.Id}) {i.Row.Version} -> {i.Row.Available}");
-                    var r = await Winget.RunAsync(Winget.UpgradeArgs(i.Row.Id, i.Row.Source), line =>
-                    {
-                        if (!Winget.IsNoise(line, out _)) Log("   " + line.Trim());
-                    }, ct, TimeSpan.FromMinutes(60));
+                    var r = await AppUpdater.UpgradeAsync(i.Row, Log, ct);
                     i.Outcome = Winget.Classify(r);
                     var text = i.Outcome == InstallOutcome.AlreadyInstalled ? T("Up to date") : Winget.Describe(r);
                     Log("   => " + text);
-                    bool good = i.Outcome == InstallOutcome.Installed || i.Outcome == InstallOutcome.AlreadyInstalled || i.Outcome == InstallOutcome.RebootRequired;
+                    bool good = AppUpdater.IsGood(i.Outcome.Value);
                     if (good) { ok++; SetItem(i, text, () => Theme.Ok); _updating = false; i.Lvi.Checked = false; _updating = true; }
                     else { failed++; SetItem(i, text, i.Outcome == InstallOutcome.Cancelled ? (Func<Color>)(() => Theme.Muted) : () => Theme.Fail); }
                     _bar.Value = Math.Min(_bar.Maximum, _bar.Value + 1);
@@ -164,7 +183,7 @@ namespace OrclWAMP
 
         void SetButtons()
         {
-            _updateBtn.Enabled = _refreshBtn.Enabled = !_running;
+            _updateBtn.Enabled = _refreshBtn.Enabled = _scheduleBtn.Enabled = !_running;
             _stopBtn.Enabled = _running && _cts != null && !_cts.IsCancellationRequested;
         }
 
@@ -172,9 +191,78 @@ namespace OrclWAMP
 
         static void SetItem(Item i, string text, Func<Color> color)
         {
-            i.Lvi.SubItems[5].Text = text;
+            i.Lvi.SubItems[6].Text = text;
             i.Color = color;
             i.Lvi.ForeColor = color();
+        }
+
+        string AutoText(string id) =>
+            _rulesUnknown ? "?" : _rules.Excluded.Contains(id) ? T("No – left out") : !_rules.Runtimes && Scanner.IsRuntime(id) ? T("No – runtime") : T("Yes");
+
+        ContextMenuStrip BuildMenu()
+        {
+            var cm = new ContextMenuStrip();
+            var leaveOut = new ToolStripMenuItem(T("Leave out of weekly updates"), null, (s, e) => SetExcluded(true));
+            var include = new ToolStripMenuItem(T("Include in weekly updates"), null, (s, e) => SetExcluded(false));
+            cm.Items.Add(leaveOut);
+            cm.Items.Add(include);
+            cm.Opening += (s, e) =>
+            {
+                var sel = _lv.SelectedItems.Cast<ListViewItem>().Select(x => ((Item)x.Tag).Row.Id).ToList();
+                if (sel.Count == 0) { e.Cancel = true; return; }
+                leaveOut.Enabled = _rulesUnknown || sel.Any(id => !_rules.Excluded.Contains(id));
+                include.Enabled = _rulesUnknown || sel.Any(id => _rules.Excluded.Contains(id));
+            };
+            return cm;
+        }
+
+        void SetExcluded(bool excluded)
+        {
+            var selected = _lv.SelectedItems.Cast<ListViewItem>().ToList();
+            if (!AppUpdater.SetExcluded(selected.Select(x => ((Item)x.Tag).Row.Id), excluded))
+            {
+                Ui.Warn(this, T("The setting could not be saved (settings.ini is in use). Try again."));
+                return;
+            }
+            RefreshRules();
+        }
+
+        void OpenSchedule()
+        {
+            if (_running) return;
+            using (var d = new ScheduleDialog()) d.ShowDialog(this);
+            ShowSchedule();
+            RefreshRules();
+        }
+
+        /// <summary>
+        /// Re-reads the rules and updates the "Weekly update" column. Only rows whose rule actually changed get
+        /// their tick changed – ticks the user set by hand stay as they are.
+        /// </summary>
+        void RefreshRules()
+        {
+            var fresh = AppUpdater.LoadRules();
+            if (fresh == null) return;
+            var old = _rules;
+            bool wasUnknown = _rulesUnknown;
+            _rules = fresh;
+            _rulesUnknown = false;
+            foreach (var i in _items)
+            {
+                i.Lvi.SubItems[5].Text = AutoText(i.Row.Id);
+                bool before = !wasUnknown && old.IsAuto(i.Row.Id), after = _rules.IsAuto(i.Row.Id);
+                if (!_updating && i.Outcome == null && before != after && !wasUnknown) i.Lvi.Checked = after;
+            }
+        }
+
+        void ShowSchedule()
+        {
+            try
+            {
+                var s = UpdateSchedule.Query();
+                _scheduleLbl.Text = s == null ? T("Automatic updates are off.") : T("Automatic updates:") + " " + s.Describe() + (s.Enabled ? "" : " (" + T("disabled") + ")");
+            }
+            catch (Exception ex) { _scheduleLbl.Text = T("Task Scheduler could not be read:") + " " + ex.Message; }
         }
 
         void Log(string line)

@@ -59,6 +59,11 @@ User picks from the suggestion list:
 
 Still open: mapped drives & printers, offline installers, network transfer, code signing.
 
+## Round 7 – Hands-off updates (1.4.002)
+- `/upgrade /unattended`: tray icon, log, summary balloon, stop after current app, exit codes (0 ok or nothing to do, 1 failures, 2 bad arguments, 3 no winget, 4 updates already running).
+- Weekly Task Scheduler task per user (interactive user, normal rights only, catch-up after missed runs). A silently elevated task was considered and rejected: any program running as the user could hijack it (winget on the user PATH, profiler variables).
+- Per-app "leave out of weekly updates" list and an "also update runtimes" option. The window pre-ticks exactly what the schedule updates.
+
 ## Rejected / deferred
 - Offline installers (downloading every installer onto the USB): many installers don't allow redistribution, it needs lots of space, and winget's `download` support is uneven. *Deferred.*
 - Migrating app settings and data: out of scope and risky.

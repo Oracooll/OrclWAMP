@@ -134,6 +134,33 @@ namespace OrclWAMP
             catch (Win32Exception) { return null; }
         }
 
+        [DllImport("wtsapi32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "WTSQuerySessionInformationW")]
+        static extern bool WTSQuerySessionInformation(IntPtr server, int sessionId, int infoClass, out IntPtr buffer, out int bytes);
+        [DllImport("wtsapi32.dll")] static extern void WTSFreeMemory(IntPtr memory);
+
+        /// <summary>
+        /// False when this process runs as a different account than the one signed in to this desktop
+        /// (Run as administrator with another admin's password). Unknown counts as the same.
+        /// </summary>
+        public static bool RunsAsSessionUser()
+        {
+            try
+            {
+                // WTS_CURRENT_SESSION = -1, WTSUserName = 5, WTSDomainName = 7
+                string Query(int info)
+                {
+                    if (!WTSQuerySessionInformation(IntPtr.Zero, -1, info, out var buf, out _)) return null;
+                    try { return Marshal.PtrToStringUni(buf); } finally { WTSFreeMemory(buf); }
+                }
+                var user = Query(5);
+                if (string.IsNullOrEmpty(user)) return true;
+                if (!string.Equals(user, Environment.UserName, StringComparison.OrdinalIgnoreCase)) return false;
+                var domain = Query(7);
+                return string.IsNullOrEmpty(domain) || string.Equals(domain, Environment.UserDomainName, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return true; }
+        }
+
         public static string CurrentSid()
         {
             try { using (var id = WindowsIdentity.GetCurrent()) return id.User?.Value ?? ""; } catch { return ""; }
